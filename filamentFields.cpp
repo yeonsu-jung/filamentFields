@@ -2,11 +2,30 @@
 
 #include "filamentFields.h"
 #include <iostream>
+#include <algorithm>
+
 
 filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list) :
     filament_nodes_list(filament_nodes_list)
 
 {
+    number_of_total_contacts = 0;
+    number_of_local_contacts = 0;
+    force_sum = 0;
+
+    get_all_nodes();
+    get_all_edges();
+    get_node_labels();
+    get_edge_labels();
+}
+
+filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list, const Eigen::MatrixXd& contact_array) :
+    filament_nodes_list(filament_nodes_list), contact_array(contact_array)
+{
+    number_of_total_contacts = contact_array.rows();
+    number_of_local_contacts = 0;
+    force_sum = 0;
+
     get_all_nodes();
     get_all_edges();
     get_node_labels();
@@ -64,25 +83,25 @@ void filamentFields::get_edge_labels() {
 }
 
 Eigen::VectorXi filamentFields::sample_edges_locally(const Eigen::Vector3d& query_point, double R_omega) const {
-    Eigen::VectorXi local_edge_labels = Eigen::VectorXi::Zero(all_edges.rows());
+    Eigen::VectorXi local_edge_trues = Eigen::VectorXi::Zero(all_edges.rows());
     for (int idx = 0; idx < all_edges.rows(); ++idx) {
         Eigen::Vector3d edge_start = all_edges.row(idx).segment<3>(0);
         Eigen::Vector3d edge_end = all_edges.row(idx).segment<3>(3);
 
         if (((edge_start - query_point).norm() < R_omega) && ((edge_end - query_point).norm() < R_omega)) {
-            local_edge_labels(idx) = 1;
+            local_edge_trues(idx) = 1;
         }
 
     }
-    return local_edge_labels;
+    return local_edge_trues;
 }
 
 Eigen::MatrixXd filamentFields::analyzeLocalVolume(const Eigen::Vector3d& query_point, double R_omega, double rod_radius) {
     // Sample edges locally
-    Eigen::VectorXi local_edge_labels = sample_edges_locally(query_point, R_omega);
+    Eigen::VectorXi local_edge_trues = sample_edges_locally(query_point, R_omega);
     number_of_labels = 0;
     // Count the number of local edges
-    int local_edge_count = local_edge_labels.sum();
+    int local_edge_count = local_edge_trues.sum();
     if (local_edge_count == 0) {
         number_of_labels = 0;
         volume_fraction = std::numeric_limits<double>::quiet_NaN();
@@ -96,18 +115,28 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolume(const Eigen::Vector3d& query_
     Eigen::VectorXi local_edge_indices = Eigen::VectorXi::Zero(local_edge_count);
     int index = 0;
     for (int i = 0; i < all_edges.rows(); ++i) {
-        if (local_edge_labels(i) == 1) {
+        if (local_edge_trues(i) == 1) {
             local_edge_indices(index) = i;
             local_edges.row(index++) = all_edges.row(i);
         }
     }
     // Unique labels
+    Eigen::VectorXi local_edge_labels = Eigen::VectorXi::Zero(local_edge_count);
     std::vector<int> unique_labels;
+    unique_labels.reserve(local_edge_count); // Reserve memory to avoid multiple allocations
     for (int i = 0; i < local_edge_count; ++i) {
-        if (std::find(unique_labels.begin(), unique_labels.end(), local_edge_labels(i)) == unique_labels.end()) {
-            unique_labels.push_back(local_edge_labels(i));
+        
+        if (local_edge_trues(i) == 0) {
+            continue;
+        }
+        int label = edge_labels(i);
+        local_edge_labels(i) = label;
+
+        if (std::find(unique_labels.begin(), unique_labels.end(), label) == unique_labels.end()) {
+            unique_labels.push_back(label);
             number_of_labels++;
         }
+
     }
 
     double edge_length_sum = 0.0;
@@ -145,6 +174,25 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolume(const Eigen::Vector3d& query_
     entanglement = entanglement_matrix.unaryExpr([](double x) {
         return std::isnan(x) ? 0.0 : std::abs(x);
     }).sum();
+
+    if (number_of_total_contacts > 0)
+    {
+        // sample the contact points
+        Eigen::VectorXi contact_labels = Eigen::VectorXi::Zero(number_of_total_contacts);
+        force_sum = 0;
+        for (int i = 0; i < number_of_total_contacts; ++i) {
+            Eigen::Vector3d contact_point = contact_array.row(i).segment<3>(0);
+            if ((contact_point - query_point).norm() < R_omega) {
+                contact_labels(i) = 1;
+                // get contact_array's ith row from 4 to 6
+                force_sum += contact_array.row(i).segment<3>(3).norm();
+            }
+        }
+        // count the number of contacts
+        number_of_local_contacts = contact_labels.sum();
+
+        // compute the sum of forces
+    }
 
     return local_edges;
 }
