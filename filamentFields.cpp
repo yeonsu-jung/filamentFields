@@ -17,6 +17,7 @@ filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_node
     get_all_edges();
     get_node_labels();
     get_edge_labels();
+    // compute_total_linking_matrix();
 }
 
 filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list, const Eigen::MatrixXd& contact_array) :
@@ -30,6 +31,7 @@ filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_node
     get_all_edges();
     get_node_labels();
     get_edge_labels();
+    // compute_total_linking_matrix();
 }
 
 void filamentFields::get_all_nodes() {
@@ -82,6 +84,16 @@ void filamentFields::get_edge_labels() {
     }
 }
 
+void filamentFields::compute_total_linking_matrix() {
+    int num_edges = all_edges.rows();
+    total_linking_matrix = Eigen::MatrixXd::Zero(num_edges, num_edges);
+    total_linking_matrix.setConstant(std::numeric_limits<double>::quiet_NaN());
+
+    filamentFields::compute_edge_wise_entanglement(all_edges, edge_labels, total_linking_matrix);
+
+    is_precomputed = true;
+}
+
 Eigen::VectorXi filamentFields::sample_edges_locally(const Eigen::Vector3d& query_point, double R_omega) const {
     Eigen::VectorXi local_edge_trues = Eigen::VectorXi::Zero(all_edges.rows());
     for (int idx = 0; idx < all_edges.rows(); ++idx) {
@@ -110,27 +122,26 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolume(const Eigen::Vector3d& query_
         return Eigen::MatrixXd(0, 6);
     }
 
-    // Extract local edges
+    // Extract local edges; quite stupid but what else can I do?
     Eigen::MatrixXd local_edges(local_edge_count, 6);
+    Eigen::VectorXi local_edge_labels = Eigen::VectorXi::Zero(local_edge_count);
     Eigen::VectorXi local_edge_indices = Eigen::VectorXi::Zero(local_edge_count);
     int index = 0;
     for (int i = 0; i < all_edges.rows(); ++i) {
         if (local_edge_trues(i) == 1) {
             local_edge_indices(index) = i;
+            local_edge_labels(index) = edge_labels(i);
+
             local_edges.row(index++) = all_edges.row(i);
         }
     }
     // Unique labels
-    Eigen::VectorXi local_edge_labels = Eigen::VectorXi::Zero(local_edge_count);
+    
     std::vector<int> unique_labels;
     unique_labels.reserve(local_edge_count); // Reserve memory to avoid multiple allocations
     for (int i = 0; i < local_edge_count; ++i) {
         
-        if (local_edge_trues(i) == 0) {
-            continue;
-        }
-        int label = edge_labels(i);
-        local_edge_labels(i) = label;
+        int label = local_edge_labels(i);
 
         if (std::find(unique_labels.begin(), unique_labels.end(), label) == unique_labels.end()) {
             unique_labels.push_back(label);
@@ -163,7 +174,9 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolume(const Eigen::Vector3d& query_
     Eigen::Vector3d eigenvalues = eigensolver.eigenvalues();
     // Find maximum absolute eigenvalue
     double max_eigenvalue = eigenvalues.cwiseAbs().maxCoeff();
-    orientational_order_parameter = max_eigenvalue;
+    // Find argmax eigenvalue
+    int max_eigenvalue_index = (eigenvalues.cwiseAbs().array() - max_eigenvalue).cwiseAbs().minCoeff();
+    orientational_order_parameter = eigenvalues(max_eigenvalue_index);
 
     // Entanglement
     Eigen::MatrixXd entanglement_matrix(local_edge_count, local_edge_count);
@@ -171,7 +184,133 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolume(const Eigen::Vector3d& query_
     filamentFields::compute_edge_wise_entanglement(local_edges, local_edge_labels, entanglement_matrix);
     // ignore nan values and take absolute value and sum
     // double entanglement = entanglement_matrix.unaryExpr([](double x) { return std::abs(x); }).sum();
-    entanglement = entanglement_matrix.unaryExpr([](double x) {
+    // entanglement = entanglement_matrix.unaryExpr([](double x) {
+    //     return std::isnan(x) ? 0.0 : std::abs(x);
+    // }).sum();
+
+    entanglement = entanglement_matrix.unaryExpr([](double x) -> double {
+        return std::isnan(x) ? 0.0 : std::abs(x);
+    }).sum();
+
+
+    if (number_of_total_contacts > 0)
+    {
+        // sample the contact points
+        Eigen::VectorXi contact_labels = Eigen::VectorXi::Zero(number_of_total_contacts);
+        force_sum = 0;
+        for (int i = 0; i < number_of_total_contacts; ++i) {
+            Eigen::Vector3d contact_point = contact_array.row(i).segment<3>(0);
+            if ((contact_point - query_point).norm() < R_omega) {
+                contact_labels(i) = 1;
+                // get contact_array's ith row from 4 to 6
+                force_sum += contact_array.row(i).segment<3>(3).norm();
+            }
+        }
+        // count the number of contacts
+        number_of_local_contacts = contact_labels.sum();
+
+        // compute the sum of forces
+    }
+
+    return local_edges;
+}
+
+Eigen::MatrixXd filamentFields::analyzeLocalVolumeFromPrecomputed(const Eigen::Vector3d& query_point, double R_omega, double rod_radius) {
+    // make sure that the total_linking_matrix is computed
+    if (is_precomputed == false) {
+        compute_total_linking_matrix();
+    }
+
+    // Sample edges locally
+    Eigen::VectorXi local_edge_trues = sample_edges_locally(query_point, R_omega);
+    number_of_labels = 0;
+    // Count the number of local edges
+    int local_edge_count = local_edge_trues.sum();
+    if (local_edge_count == 0) {
+        number_of_labels = 0;
+        volume_fraction = std::numeric_limits<double>::quiet_NaN();
+        orientational_order_parameter = std::numeric_limits<double>::quiet_NaN();
+        entanglement = std::numeric_limits<double>::quiet_NaN();
+        return Eigen::MatrixXd(0, 6);
+    }
+
+    // Extract local edges; quite stupid but what else can I do?
+    Eigen::MatrixXd local_edges(local_edge_count, 6);
+    Eigen::VectorXi local_edge_labels = Eigen::VectorXi::Zero(local_edge_count);
+    Eigen::VectorXi local_edge_indices = Eigen::VectorXi::Zero(local_edge_count);
+    int index = 0;
+    for (int i = 0; i < all_edges.rows(); ++i) {
+        if (local_edge_trues(i) == 1) {
+            local_edge_indices(index) = i;
+            local_edge_labels(index) = edge_labels(i);
+
+            local_edges.row(index++) = all_edges.row(i);
+        }
+    }
+    // Unique labels
+    
+    std::vector<int> unique_labels;
+    unique_labels.reserve(local_edge_count); // Reserve memory to avoid multiple allocations
+    for (int i = 0; i < local_edge_count; ++i) {
+        
+        int label = local_edge_labels(i);
+
+        if (std::find(unique_labels.begin(), unique_labels.end(), label) == unique_labels.end()) {
+            unique_labels.push_back(label);
+            number_of_labels++;
+        }
+
+    }
+
+    double edge_length_sum = 0.0;
+    for (int i = 0; i < local_edge_count; ++i) {
+        Eigen::Vector3d edge_start = local_edges.row(i).segment<3>(0);
+        Eigen::Vector3d edge_end = local_edges.row(i).segment<3>(3);
+        edge_length_sum += (edge_end - edge_start).norm();
+    }
+
+    // volume fraction
+    volume_fraction = (M_PI * rod_radius * rod_radius * edge_length_sum) / (4.0 / 3.0 * M_PI * R_omega * R_omega * R_omega);
+
+    // Orientational order parameter
+    Eigen::Matrix3d Q = Eigen::Matrix3d::Zero();
+    for (int i = 0; i < local_edge_count; ++i) {
+        Eigen::Vector3d edge_start = local_edges.row(i).segment<3>(0);
+        Eigen::Vector3d edge_end = local_edges.row(i).segment<3>(3);
+        Eigen::Vector3d edge = edge_end - edge_start;
+        edge.normalize();
+        Q += (3.0 * edge * edge.transpose() - Eigen::Matrix3d::Identity())/2.0;
+    }
+    Q /= local_edge_count;
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver(Q);
+    Eigen::Vector3d eigenvalues = eigensolver.eigenvalues();
+    // Find maximum absolute eigenvalue
+    double max_eigenvalue = eigenvalues.cwiseAbs().maxCoeff();
+    // Find argmax eigenvalue
+    int max_eigenvalue_index = (eigenvalues.cwiseAbs().array() - max_eigenvalue).cwiseAbs().minCoeff();
+    orientational_order_parameter = eigenvalues(max_eigenvalue_index);
+
+    // Entanglement
+    Eigen::MatrixXd entanglement_matrix(local_edge_count, local_edge_count);
+    entanglement_matrix.setConstant(std::numeric_limits<double>::quiet_NaN());
+
+    for (int idx = 0; idx < local_edge_count; ++idx) {
+        for (int jdx = idx+1; jdx < local_edge_count; ++jdx) {
+            // if (local_edge_labels(idx) == local_edge_labels(jdx)) {
+            //     continue;
+            // }
+
+            double debug1 = local_edge_indices(idx);
+            double debug2 = local_edge_indices(jdx);
+            double debug3 = local_edge_labels(idx);
+            double debug4 = local_edge_labels(jdx);
+            double e = total_linking_matrix(local_edge_indices(idx) , local_edge_indices(jdx));
+
+            entanglement_matrix(idx,jdx) = total_linking_matrix(local_edge_indices(idx) , local_edge_indices(jdx));
+        }
+    }
+    
+    entanglement = entanglement_matrix.unaryExpr([](double x) -> double {
         return std::isnan(x) ? 0.0 : std::abs(x);
     }).sum();
 
@@ -196,7 +335,6 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolume(const Eigen::Vector3d& query_
 
     return local_edges;
 }
-
 
 
 double filamentFields::_clip(double x, double lower, double upper) const {
@@ -233,13 +371,13 @@ double filamentFields::compute_linking_number_for_edges(const Eigen::VectorXd& e
 
 
 
-void filamentFields::compute_edge_wise_entanglement(const Eigen::MatrixXd& _all_edges, const Eigen::VectorXi& labels, Eigen::MatrixXd& entanglement_matrix) const {
+void filamentFields::compute_edge_wise_entanglement(const Eigen::MatrixXd& _all_edges, const Eigen::VectorXi& _edge_labels, Eigen::MatrixXd& entanglement_matrix) {
     int num_all_edges = _all_edges.rows();
     for (int idx = 0; idx < num_all_edges; ++idx) {
         const Eigen::VectorXd edge1 = _all_edges.row(idx);
 
         for (int jdx = idx + 1; jdx < num_all_edges; ++jdx) {
-            if (labels(idx) == labels(jdx)) {
+            if (_edge_labels(idx) == _edge_labels(jdx)) {
                 continue;
             }
 

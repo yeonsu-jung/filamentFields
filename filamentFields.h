@@ -16,6 +16,7 @@ public:
     Eigen::MatrixXd return_all_edges() const { return all_edges; }
     Eigen::VectorXi return_node_labels() const { return node_labels; }
     Eigen::MatrixXi return_edge_labels() const { return edge_labels; }
+    Eigen::MatrixXd return_total_linking_matrix() const { return total_linking_matrix; }
 
     int return_number_of_labels() const { return number_of_labels; }
     double return_volume_fraction() const { return volume_fraction; }
@@ -24,11 +25,16 @@ public:
     int return_number_of_local_contacts() const { return number_of_local_contacts; }
     double return_force_sum() const { return force_sum; }
 
+    // Eigen::MatrixXd return_entanglement_matrix() const { return entanglement_matrix; }
+
     Eigen::VectorXi sample_edges_locally(const Eigen::Vector3d& query_point, double R) const;
 
     Eigen::MatrixXd analyzeLocalVolume(const Eigen::Vector3d& query_point, double R_omega, double rod_radius);
+    Eigen::MatrixXd analyzeLocalVolumeFromPrecomputed(const Eigen::Vector3d& query_point, double R_omega, double rod_radius);
+
     double compute_linking_number_for_edges(const Eigen::VectorXd& e_i, const Eigen::VectorXd& e_j) const;
-    void compute_edge_wise_entanglement(const Eigen::MatrixXd& _all_edges, const Eigen::VectorXi& labels, Eigen::MatrixXd& entanglement_matrix) const;
+    void compute_edge_wise_entanglement(const Eigen::MatrixXd& _all_edges, const Eigen::VectorXi& _edge_labels, Eigen::MatrixXd& entanglement_matrix);
+    void compute_total_linking_matrix();
     
 
 private:
@@ -54,6 +60,8 @@ private:
     Eigen::VectorXi node_labels;
     Eigen::VectorXi edge_labels;
 
+    Eigen::MatrixXd total_linking_matrix;
+
     void get_node_labels();
     void get_edge_labels();
 
@@ -61,6 +69,8 @@ private:
     void get_all_edges();
 
     double _clip(double x, double lower, double upper) const;
+
+    bool is_precomputed = false;
 
 };
 
