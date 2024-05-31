@@ -22,7 +22,10 @@ PYBIND11_MODULE(filamentFields, m) {
         .def("return_all_edges", &filamentFields::return_all_edges)
         .def("return_node_labels", &filamentFields::return_node_labels)
         .def("return_edge_labels", &filamentFields::return_edge_labels)
+        .def("return_total_linking_matrix", &filamentFields::return_total_linking_matrix)
+        .def("compute_total_linking_matrix", &filamentFields::compute_total_linking_matrix)
         .def("sample_edges_locally", &filamentFields::sample_edges_locally)
-        .def("analyzeLocalVolume", &filamentFields::analyzeLocalVolume);
+        .def("analyzeLocalVolume", &filamentFields::analyzeLocalVolume)
+        .def("analyzeLocalVolumeFromPrecomputed", &filamentFields::analyzeLocalVolumeFromPrecomputed);
         
 }
