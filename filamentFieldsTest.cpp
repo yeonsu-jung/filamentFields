@@ -37,7 +37,7 @@ int main() {
     filament.precompute(R_omega);
     
     // Uncomment these lines to use the filament analysis
-    filament.analyzeLocalVolumeFromPrecomputed(query_point, R_omega, rod_radius);
+    filament.analyze_local_volume_from_precomputed(query_point, R_omega, rod_radius);
     std::cout << "Number of labels: " << filament.return_number_of_labels() << std::endl;
     std::cout << "Volume fraction: " << filament.return_volume_fraction() << std::endl;
     std::cout << "Orientational order parameter: " << filament.return_orientational_order_parameter() << std::endl;
