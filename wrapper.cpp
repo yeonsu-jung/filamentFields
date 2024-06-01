@@ -10,8 +10,8 @@ PYBIND11_MODULE(filamentFields, m) {
     py::class_<filamentFields>(m, "filamentFields")
         .def(py::init<const std::vector<Eigen::MatrixXd>&>())
         .def(py::init<const std::vector<Eigen::MatrixXd>&, const Eigen::MatrixXd&>())
-        .def("updateFilamentNodesList", &filamentFields::updateFilamentNodesList)
-        .def("updateContactArray", &filamentFields::updateContactArray)
+        .def("update_filament_nodes_list", &filamentFields::update_filament_nodes_list)
+        .def("update_contact_array", &filamentFields::update_contact_array)
         .def("return_filament_nodes_list", &filamentFields::return_filament_nodes_list)
         .def("return_filament_edges_list", &filamentFields::return_filament_edges_list)
         .def("return_number_of_labels", &filamentFields::return_number_of_labels)
@@ -29,7 +29,8 @@ PYBIND11_MODULE(filamentFields, m) {
         .def("compute_total_linking_matrix", &filamentFields::compute_total_linking_matrix)
         .def("precompute", &filamentFields::precompute)
         .def("sample_edges_locally", &filamentFields::sample_edges_locally)
-        .def("analyzeLocalVolume", &filamentFields::analyzeLocalVolume)
-        .def("analyzeLocalVolumeFromPrecomputed", &filamentFields::analyzeLocalVolumeFromPrecomputed);
+        .def("analyze_local_volume", &filamentFields::analyze_local_volume)
+        .def("analyze_local_volume_from_precomputed", &filamentFields::analyze_local_volume_from_precomputed)
+        .def("analyze_local_volume_over_domain", &filamentFields::analyze_local_volume_over_domain);
         
 }
