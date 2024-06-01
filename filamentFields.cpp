@@ -113,10 +113,49 @@ void filamentFields::get_edge_labels() {
     }
 }
 
-void filamentFields::precompute() {
+void filamentFields::get_edge_pairs(double R_omega) {
+    edge_pairs.clear();
+    edge_pairs.reserve(all_edges.rows());
+
+    edge_lengths = Eigen::VectorXd::Zero(all_edges.rows());
+    // precompute sphere container
+    for (int idx = 0; idx < all_edges.rows(); ++idx) {
+        Eigen::Vector3d edge1_start = all_edges.row(idx).segment<3>(0);
+        Eigen::Vector3d edge1_end = all_edges.row(idx).segment<3>(3);
+        edge_lengths(idx) = (edge1_end - edge1_start).norm();
+
+        for (int jdx = idx + 1; jdx < all_edges.rows(); ++jdx) {
+            if (edge_labels(idx) == edge_labels(jdx)) {
+                continue;
+            }
+
+            Eigen::Vector3d edge2_start = all_edges.row(jdx).segment<3>(0);
+            Eigen::Vector3d edge2_end = all_edges.row(jdx).segment<3>(3);
+
+            double dist1 = (edge1_start - edge2_start).norm();
+            double dist2 = (edge1_start - edge2_end).norm();
+            double dist3 = (edge1_end - edge2_start).norm();
+            double dist4 = (edge1_end - edge2_end).norm();
+            if (dist1 < R_omega && dist2 < R_omega && dist3 < R_omega && dist4 < R_omega) {
+                edge_pairs.push_back(std::make_pair(idx, jdx));
+            }
+        }
+    }
+
+}
+
+void filamentFields::precompute(double R_omega) {
+    // compute_all_edge_lengths(); 
+    if (is_precomputed) {
+        return;
+    }
+
+    get_edge_pairs(R_omega); // comes first to compute edge pairs
+
     compute_total_linking_matrix();
+
     compute_all_Q_tensors();
-    compute_all_edge_lengths();
+
     is_precomputed = true;
 }
 
@@ -125,7 +164,19 @@ void filamentFields::compute_total_linking_matrix() {
     total_linking_matrix = Eigen::MatrixXd::Zero(num_edges, num_edges);
     total_linking_matrix.setConstant(std::numeric_limits<double>::quiet_NaN());
 
-    filamentFields::compute_edge_wise_entanglement(all_edges, edge_labels, total_linking_matrix);
+    // filamentFields::compute_edge_wise_entanglement(all_edges, edge_labels, total_linking_matrix);
+    for (auto& pair : edge_pairs) {
+        int idx = pair.first;
+        int jdx = pair.second;
+        if (edge_labels(idx) == edge_labels(jdx)) {
+            continue;
+        }
+        const Eigen::VectorXd edge1 = all_edges.row(idx);
+        const Eigen::VectorXd edge2 = all_edges.row(jdx);
+        double lk = filamentFields::compute_linking_number_for_edges(edge1, edge2);
+        total_linking_matrix(idx, jdx) = lk;
+    }
+
     total_entanglement = total_linking_matrix.unaryExpr([](double x) -> double {
         return std::isnan(x) ? 0.0 : std::abs(x);
     }).sum();
@@ -279,7 +330,7 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolume(const Eigen::Vector3d& query_
 Eigen::MatrixXd filamentFields::analyzeLocalVolumeFromPrecomputed(const Eigen::Vector3d& query_point, double R_omega, double rod_radius) {
     // make sure that the total_linking_matrix is computed
     if (is_precomputed == false) {
-        precompute();
+        precompute(R_omega);
     }
 
     // Sample edges locally
@@ -424,6 +475,7 @@ double filamentFields::compute_linking_number_for_edges(const Eigen::VectorXd& e
 
 void filamentFields::compute_edge_wise_entanglement(const Eigen::MatrixXd& _all_edges, const Eigen::VectorXi& _edge_labels, Eigen::MatrixXd& entanglement_matrix) {
     int num_all_edges = _all_edges.rows();
+
     for (int idx = 0; idx < num_all_edges; ++idx) {
         const Eigen::VectorXd edge1 = _all_edges.row(idx);
 
@@ -431,13 +483,24 @@ void filamentFields::compute_edge_wise_entanglement(const Eigen::MatrixXd& _all_
             if (_edge_labels(idx) == _edge_labels(jdx)) {
                 continue;
             }
-
             const Eigen::VectorXd edge2 = _all_edges.row(jdx);
             // entanglement_matrix(idx, jdx) = filamentFields::compute_linking_number_for_edges(edge1, edge2);
             double lk = filamentFields::compute_linking_number_for_edges(edge1, edge2);
             entanglement_matrix(idx, jdx) = lk;
         }
     }
+
+    // for (auto& pair : edge_pairs) {
+    //     int idx = pair.first;
+    //     int jdx = pair.second;
+    //     if (_edge_labels(idx) == _edge_labels(jdx)) {
+    //         continue;
+    //     }
+    //     const Eigen::VectorXd edge1 = _all_edges.row(idx);
+    //     const Eigen::VectorXd edge2 = _all_edges.row(jdx);
+    //     double lk = filamentFields::compute_linking_number_for_edges(edge1, edge2);
+    //     entanglement_matrix(idx, jdx) = lk;
+    // }
 }
 
 

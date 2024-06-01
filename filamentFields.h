@@ -39,7 +39,7 @@ public:
     double compute_linking_number_for_edges(const Eigen::VectorXd& e_i, const Eigen::VectorXd& e_j) const;
     void compute_edge_wise_entanglement(const Eigen::MatrixXd& _all_edges, const Eigen::VectorXi& _edge_labels, Eigen::MatrixXd& entanglement_matrix);
 
-    void precompute();
+    void precompute(double R_omega);
     void compute_total_linking_matrix();
     void compute_all_Q_tensors();
     void compute_all_edge_lengths();
@@ -69,6 +69,8 @@ private:
     Eigen::VectorXi node_labels;
     Eigen::VectorXi edge_labels;
 
+    std::vector< std::pair<int, int> > edge_pairs;
+
     Eigen::MatrixXd total_linking_matrix;
     std::vector<Eigen::MatrixXd> Q_tensors; // vs. whole Eigen matrix?
     Eigen::VectorXd edge_lengths; 
@@ -78,6 +80,8 @@ private:
 
     void get_all_nodes();
     void get_all_edges();
+
+    void get_edge_pairs(double R_omega);
 
     double _clip(double x, double lower, double upper) const;
 

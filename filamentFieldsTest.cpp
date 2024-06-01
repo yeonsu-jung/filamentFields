@@ -16,7 +16,7 @@ int main() {
     // filament_nodes_list.push_back(nodes1);
     // filament_nodes_list.push_back(nodes2);
 
-    int num_rods = 20;
+    int num_rods = 100;
     // Seed the random number generator
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
     // generate random rods
@@ -32,8 +32,9 @@ int main() {
 
     filamentFields filament(filament_nodes_list);
     Eigen::Vector3d query_point(0.0, 0.0, 0.0);
-    double R_omega = 1.1;
+    double R_omega = 0.1;
     double rod_radius = 0.1;
+    filament.precompute(R_omega);
     
     // Uncomment these lines to use the filament analysis
     filament.analyzeLocalVolumeFromPrecomputed(query_point, R_omega, rod_radius);
