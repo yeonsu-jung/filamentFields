@@ -389,6 +389,9 @@ Eigen::MatrixXd filamentFields::analyze_local_volume_from_precomputed(const Eige
     // Find argmax eigenvalue
     int max_eigenvalue_index = (eigenvalues.cwiseAbs().array() - max_eigenvalue).cwiseAbs().minCoeff();
     orientational_order_parameter = eigenvalues(max_eigenvalue_index);
+    // local_Q_tensor = Q;
+    // flatten the Q tensor
+    local_Q_tensor << Q(0,0), Q(0,1), Q(0,2), Q(1,0), Q(1,1), Q(1,2), Q(2,0), Q(2,1), Q(2,2);
 
     // Entanglement
     Eigen::MatrixXd entanglement_matrix(local_edge_count, local_edge_count);

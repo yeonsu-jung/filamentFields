@@ -24,6 +24,7 @@ public:
     int return_number_of_labels() const { return number_of_labels; }
     double return_volume_fraction() const { return volume_fraction; }
     double return_orientational_order_parameter() const { return orientational_order_parameter; }
+    Eigen::Matrix<double,9,1> return_local_Q_tensor() const { return local_Q_tensor; }
     double return_entanglement() const { return local_entanglement; }
     double return_total_entanglement() const { return total_entanglement; }
     int return_number_of_local_contacts() const { return number_of_local_contacts; }
@@ -53,6 +54,7 @@ private:
     double orientational_order_parameter;
     double local_entanglement;
     double total_entanglement;
+    Eigen::Matrix<double,9,1> local_Q_tensor;
 
     int number_of_local_contacts;
     double force_sum;

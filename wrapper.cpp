@@ -17,6 +17,7 @@ PYBIND11_MODULE(filamentFields, m) {
         .def("return_number_of_labels", &filamentFields::return_number_of_labels)
         .def("return_volume_fraction", &filamentFields::return_volume_fraction)
         .def("return_orientational_order_parameter", &filamentFields::return_orientational_order_parameter)
+        .def("return_local_Q_tensor", &filamentFields::return_local_Q_tensor)
         .def("return_entanglement", &filamentFields::return_entanglement)
         .def("return_total_entanglement", &filamentFields::return_total_entanglement)
         .def("return_number_of_local_contacts", &filamentFields::return_number_of_local_contacts)
