@@ -12,6 +12,7 @@ filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_node
     number_of_total_contacts = 0;
     number_of_local_contacts = 0;
     force_sum = 0;
+    total_entanglement = 0;
 
     get_all_nodes();
     get_all_edges();
@@ -26,12 +27,33 @@ filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_node
     number_of_total_contacts = contact_array.rows();
     number_of_local_contacts = 0;
     force_sum = 0;
+    total_entanglement = 0;
 
     get_all_nodes();
     get_all_edges();
     get_node_labels();
     get_edge_labels();
     // compute_total_linking_matrix();
+}
+
+void filamentFields::updateFilamentNodesList(const std::vector<Eigen::MatrixXd>& _filament_nodes_list)
+{
+    filament_nodes_list = _filament_nodes_list;
+    total_entanglement = 0;
+    is_precomputed = false;
+    get_all_nodes();
+    get_all_edges();
+    get_node_labels();
+    get_edge_labels();
+    // compute_total_linking_matrix();
+}
+
+void filamentFields::updateContactArray(const Eigen::MatrixXd& _contact_array)
+{
+    contact_array = _contact_array;
+    number_of_total_contacts = contact_array.rows();
+    number_of_local_contacts = 0;
+    force_sum = 0;
 }
 
 void filamentFields::get_all_nodes() {
@@ -90,6 +112,9 @@ void filamentFields::compute_total_linking_matrix() {
     total_linking_matrix.setConstant(std::numeric_limits<double>::quiet_NaN());
 
     filamentFields::compute_edge_wise_entanglement(all_edges, edge_labels, total_linking_matrix);
+    total_entanglement = total_linking_matrix.unaryExpr([](double x) -> double {
+        return std::isnan(x) ? 0.0 : std::abs(x);
+    }).sum();
 
     is_precomputed = true;
 }

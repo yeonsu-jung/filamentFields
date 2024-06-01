@@ -10,6 +10,9 @@ public:
     filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list);
     filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list, const Eigen::MatrixXd& contact_array);
 
+    void updateFilamentNodesList(const std::vector<Eigen::MatrixXd>& _filament_nodes_list);
+    void updateContactArray(const Eigen::MatrixXd& _contact_array);
+
     std::vector<Eigen::MatrixXd> return_filament_nodes_list() const { return filament_nodes_list; }
     std::vector<Eigen::MatrixXd> return_filament_edges_list() const { return filament_edges_list; }
     Eigen::MatrixXd return_all_nodes() const { return all_nodes; }
@@ -22,6 +25,7 @@ public:
     double return_volume_fraction() const { return volume_fraction; }
     double return_orientational_order_parameter() const { return orientational_order_parameter; }
     double return_entanglement() const { return entanglement; }
+    double return_total_entanglement() const { return total_entanglement; }
     int return_number_of_local_contacts() const { return number_of_local_contacts; }
     double return_force_sum() const { return force_sum; }
 
@@ -43,6 +47,7 @@ private:
     double volume_fraction;
     double orientational_order_parameter;
     double entanglement;
+    double total_entanglement;
 
     int number_of_local_contacts;
     double force_sum;
