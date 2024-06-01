@@ -13,6 +13,8 @@ filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_node
     number_of_local_contacts = 0;
     force_sum = 0;
     total_entanglement = 0;
+    Q_tensors.clear();
+    Q_tensors.reserve(all_edges.rows());
 
     get_all_nodes();
     get_all_edges();
@@ -28,6 +30,8 @@ filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_node
     number_of_local_contacts = 0;
     force_sum = 0;
     total_entanglement = 0;
+    Q_tensors.clear();
+    Q_tensors.reserve(all_edges.rows());
 
     get_all_nodes();
     get_all_edges();
@@ -41,6 +45,9 @@ void filamentFields::updateFilamentNodesList(const std::vector<Eigen::MatrixXd>&
     filament_nodes_list = _filament_nodes_list;
     total_entanglement = 0;
     is_precomputed = false;
+    Q_tensors.clear();
+    Q_tensors.reserve(all_edges.rows());
+
     get_all_nodes();
     get_all_edges();
     get_node_labels();
@@ -106,6 +113,13 @@ void filamentFields::get_edge_labels() {
     }
 }
 
+void filamentFields::precompute() {
+    compute_total_linking_matrix();
+    compute_all_Q_tensors();
+    compute_all_edge_lengths();
+    is_precomputed = true;
+}
+
 void filamentFields::compute_total_linking_matrix() {
     int num_edges = all_edges.rows();
     total_linking_matrix = Eigen::MatrixXd::Zero(num_edges, num_edges);
@@ -115,8 +129,30 @@ void filamentFields::compute_total_linking_matrix() {
     total_entanglement = total_linking_matrix.unaryExpr([](double x) -> double {
         return std::isnan(x) ? 0.0 : std::abs(x);
     }).sum();
+}
 
-    is_precomputed = true;
+void filamentFields::compute_all_Q_tensors() {
+    Q_tensors.clear();
+    int num_edges = all_edges.rows();
+    Eigen::MatrixXd Q_tensor = Eigen::MatrixXd::Zero(3, 3);
+    Eigen::MatrixXd Q_tensor_sum = Eigen::MatrixXd::Zero(3, 3);
+    for (int idx = 0; idx < num_edges; ++idx) {
+        Eigen::Vector3d edge_start = all_edges.row(idx).segment<3>(0);
+        Eigen::Vector3d edge_end = all_edges.row(idx).segment<3>(3);
+        Eigen::Vector3d edge = edge_end - edge_start;
+        edge.normalize();
+        Q_tensor = (3.0 * edge * edge.transpose() - Eigen::Matrix3d::Identity())/2.0;
+        Q_tensors.push_back(Q_tensor);
+    }
+}
+
+void filamentFields::compute_all_edge_lengths() {
+    edge_lengths = Eigen::VectorXd::Zero(all_edges.rows());
+    for (int idx = 0; idx < all_edges.rows(); ++idx) {
+        Eigen::Vector3d edge_start = all_edges.row(idx).segment<3>(0);
+        Eigen::Vector3d edge_end = all_edges.row(idx).segment<3>(3);
+        edge_lengths(idx) = (edge_end - edge_start).norm();
+    }
 }
 
 Eigen::VectorXi filamentFields::sample_edges_locally(const Eigen::Vector3d& query_point, double R_omega) const {
@@ -243,7 +279,7 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolume(const Eigen::Vector3d& query_
 Eigen::MatrixXd filamentFields::analyzeLocalVolumeFromPrecomputed(const Eigen::Vector3d& query_point, double R_omega, double rod_radius) {
     // make sure that the total_linking_matrix is computed
     if (is_precomputed == false) {
-        compute_total_linking_matrix();
+        precompute();
     }
 
     // Sample edges locally
@@ -272,26 +308,20 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolumeFromPrecomputed(const Eigen::V
             local_edges.row(index++) = all_edges.row(i);
         }
     }
-    // Unique labels
-    
+    // Unique labels    
     std::vector<int> unique_labels;
     unique_labels.reserve(local_edge_count); // Reserve memory to avoid multiple allocations
-    for (int i = 0; i < local_edge_count; ++i) {
-        
+    for (int i = 0; i < local_edge_count; ++i) {        
         int label = local_edge_labels(i);
-
         if (std::find(unique_labels.begin(), unique_labels.end(), label) == unique_labels.end()) {
             unique_labels.push_back(label);
             number_of_labels++;
         }
-
     }
 
     double edge_length_sum = 0.0;
     for (int i = 0; i < local_edge_count; ++i) {
-        Eigen::Vector3d edge_start = local_edges.row(i).segment<3>(0);
-        Eigen::Vector3d edge_end = local_edges.row(i).segment<3>(3);
-        edge_length_sum += (edge_end - edge_start).norm();
+        edge_length_sum += edge_lengths(local_edge_indices(i));
     }
 
     // volume fraction
@@ -300,11 +330,7 @@ Eigen::MatrixXd filamentFields::analyzeLocalVolumeFromPrecomputed(const Eigen::V
     // Orientational order parameter
     Eigen::Matrix3d Q = Eigen::Matrix3d::Zero();
     for (int i = 0; i < local_edge_count; ++i) {
-        Eigen::Vector3d edge_start = local_edges.row(i).segment<3>(0);
-        Eigen::Vector3d edge_end = local_edges.row(i).segment<3>(3);
-        Eigen::Vector3d edge = edge_end - edge_start;
-        edge.normalize();
-        Q += (3.0 * edge * edge.transpose() - Eigen::Matrix3d::Identity())/2.0;
+        Q += Q_tensors[local_edge_indices(i)];
     }
     Q /= local_edge_count;
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver(Q);
