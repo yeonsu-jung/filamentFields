@@ -27,6 +27,8 @@ public:
     Eigen::Matrix<double,9,1> return_local_Q_tensor() const { return local_Q_tensor; }
     double return_entanglement() const { return local_entanglement; }
     double return_total_entanglement() const { return total_entanglement; }
+    Eigen::MatrixXd return_filament_linking_matrix() const { return filament_linking_matrix; }
+    
     int return_number_of_local_contacts() const { return number_of_local_contacts; }
     double return_force_sum() const { return force_sum; }
 
@@ -43,6 +45,7 @@ public:
 
     void precompute(double R_omega);
     void compute_total_linking_matrix();
+    void compute_filament_linking_matrix();
     void compute_all_Q_tensors();
     void compute_all_edge_lengths();
     
@@ -74,7 +77,9 @@ private:
 
     std::vector< std::pair<int, int> > edge_pairs;
 
-    Eigen::MatrixXd total_linking_matrix;
+    Eigen::MatrixXd total_linking_matrix; // edge wise
+    Eigen::MatrixXd filament_linking_matrix;
+
     std::vector<Eigen::MatrixXd> Q_tensors; // vs. whole Eigen matrix?
     Eigen::VectorXd edge_lengths; 
 
