@@ -25,6 +25,8 @@ find_package(pybind11 REQUIRED)
 set(Eigen3_DIR /opt/homebrew/Cellar/eigen/3.4.0_1/share/eigen3/cmake)
 find_package(Eigen3 3.4 REQUIRED)
 
+find_package(TBB REQUIRED)
+
 include_directories(${EIGEN_INCLUDE_DIRS})
 include_directories(${pybind11_INCLUDE_DIRS})
 
@@ -32,6 +34,6 @@ add_executable(filamentFieldsTest filamentFieldsTest.cpp filamentFields.cpp)
 
 # Create the pybind11 module
 pybind11_add_module(filamentFields MODULE filamentFields.cpp wrapper.cpp)
-target_link_libraries(filamentFields PRIVATE Eigen3::Eigen)
+target_link_libraries(filamentFields PRIVATE Eigen3::Eigen TBB::tbb)
 
-target_link_libraries(filamentFieldsTest PRIVATE Eigen3::Eigen)
+target_link_libraries(filamentFieldsTest PRIVATE Eigen3::Eigen TBB::tbb)
