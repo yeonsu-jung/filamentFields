@@ -4,6 +4,7 @@
 #include <cmath> // For M_PI and standard math functions
 #include <vector>
 #include <Eigen/Dense>
+#include <tbb/tbb.h>
 
 class filamentFields {
 public:
@@ -28,7 +29,7 @@ public:
     double return_entanglement() const { return local_entanglement; }
     double return_total_entanglement() const { return total_entanglement; }
     Eigen::MatrixXd return_filament_linking_matrix() const { return filament_linking_matrix; }
-    
+
     int return_number_of_local_contacts() const { return number_of_local_contacts; }
     double return_force_sum() const { return force_sum; }
 

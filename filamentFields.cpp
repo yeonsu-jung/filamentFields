@@ -158,26 +158,55 @@ void filamentFields::precompute(double R_omega) {
 }
 
 void filamentFields::compute_total_linking_matrix() {
+    
     int num_edges = all_edges.rows();
     total_linking_matrix = Eigen::MatrixXd::Zero(num_edges, num_edges);
     total_linking_matrix.setConstant(std::numeric_limits<double>::quiet_NaN());
 
-    // filamentFields::compute_edge_wise_entanglement(all_edges, edge_labels, total_linking_matrix);
-    for (auto& pair : edge_pairs) {
-        int idx = pair.first;
-        int jdx = pair.second;
-        if (edge_labels(idx) == edge_labels(jdx)) {
-            continue;
+    // Create a vector of indices for the edge pairs to parallelize over
+    std::vector<std::pair<int, int>> edge_pairs_vector(edge_pairs.begin(), edge_pairs.end());
+
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, edge_pairs_vector.size()),
+        [&](const tbb::blocked_range<size_t>& r) {
+            for (size_t i = r.begin(); i != r.end(); ++i) {
+                const auto& pair = edge_pairs_vector[i];
+                int idx = pair.first;
+                int jdx = pair.second;
+                if (edge_labels(idx) == edge_labels(jdx)) {
+                    continue;
+                }
+                const Eigen::VectorXd edge1 = all_edges.row(idx);
+                const Eigen::VectorXd edge2 = all_edges.row(jdx);
+                double lk = filamentFields::compute_linking_number_for_edges(edge1, edge2);
+                total_linking_matrix(idx, jdx) = lk;
+            }
         }
-        const Eigen::VectorXd edge1 = all_edges.row(idx);
-        const Eigen::VectorXd edge2 = all_edges.row(jdx);
-        double lk = filamentFields::compute_linking_number_for_edges(edge1, edge2);
-        total_linking_matrix(idx, jdx) = lk;
-    }
+    );
 
     total_entanglement = total_linking_matrix.unaryExpr([](double x) -> double {
         return std::isnan(x) ? 0.0 : std::abs(x);
     }).sum();
+
+    // int num_edges = all_edges.rows();
+    // total_linking_matrix = Eigen::MatrixXd::Zero(num_edges, num_edges);
+    // total_linking_matrix.setConstant(std::numeric_limits<double>::quiet_NaN());
+
+    // // filamentFields::compute_edge_wise_entanglement(all_edges, edge_labels, total_linking_matrix);
+    // for (auto& pair : edge_pairs) {
+    //     int idx = pair.first;
+    //     int jdx = pair.second;
+    //     if (edge_labels(idx) == edge_labels(jdx)) {
+    //         continue;
+    //     }
+    //     const Eigen::VectorXd edge1 = all_edges.row(idx);
+    //     const Eigen::VectorXd edge2 = all_edges.row(jdx);
+    //     double lk = filamentFields::compute_linking_number_for_edges(edge1, edge2);
+    //     total_linking_matrix(idx, jdx) = lk;
+    // }
+
+    // total_entanglement = total_linking_matrix.unaryExpr([](double x) -> double {
+    //     return std::isnan(x) ? 0.0 : std::abs(x);
+    // }).sum();
 }
 
 void filamentFields::compute_filament_linking_matrix() {
@@ -189,17 +218,23 @@ void filamentFields::compute_filament_linking_matrix() {
     for (int idx = 0; idx < num_filaments; ++idx) {        
         for (int jdx = idx + 1; jdx < num_filaments; ++jdx) {            
             double lk = 0;
+
+
             for (int kdx = 0; kdx < filament_edges_list[idx].rows(); ++kdx) {
                 for (int ldx = 0; ldx < filament_edges_list[jdx].rows(); ++ldx) {
-                    const Eigen::VectorXd edge1 = filament_edges_list[idx].row(kdx);
-                    const Eigen::VectorXd edge2 = filament_edges_list[jdx].row(ldx);
-                    lk += filamentFields::compute_linking_number_for_edges(edge1, edge2);
+                    
+                    int ix = idx*filament_edges_list[idx].rows() + kdx;
+                    int jx = jdx*filament_edges_list[jdx].rows() + ldx;
+
+                    lk += total_linking_matrix(ix, jx);
+
                 }
             }
+
+
             filament_linking_matrix(idx, jdx) = lk;
         }
     }
-
 }
 
 void filamentFields::compute_all_Q_tensors() {
