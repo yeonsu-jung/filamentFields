@@ -379,7 +379,11 @@ Eigen::MatrixXd filamentFields::analyze_local_volume(const Eigen::Vector3d& quer
         // compute the sum of forces
     }
 
-    return local_edges;
+    // concat local_edges and local_edge_labels
+    Eigen::MatrixXd local_edges_and_labels(local_edge_count, 7);
+    local_edges_and_labels << local_edges, local_edge_labels.cast<double>();
+
+    return local_edges_and_labels;
 }
 
 Eigen::MatrixXd filamentFields::analyze_local_volume_from_precomputed(const Eigen::Vector3d& query_point, double R_omega, double rod_radius) {
@@ -493,7 +497,11 @@ Eigen::MatrixXd filamentFields::analyze_local_volume_from_precomputed(const Eige
         // compute the sum of forces
     }
 
-    return local_edges;
+    // concat local_edges and local_edge_labels
+    Eigen::MatrixXd local_edges_and_labels(local_edge_count, 7);
+    local_edges_and_labels << local_edges, local_edge_labels.cast<double>();
+
+    return local_edges_and_labels;
 }
 
 // Eigen::MatrixXd filamentFields::analyze_local_volume_over_domain(const Eigen::MatrixX3d& query_points, double R_omega, double rod_radius) {
