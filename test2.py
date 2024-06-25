@@ -55,25 +55,8 @@ plt.show()
 fF = filamentFields.filamentFields(list_of_arrays)
 
 R_omega = 30
-local_edges_labels = fF.analyze_local_volume(np.array([0,0,0]), R_omega, 0.01)
-# group by labels (7th column)
-local_labels = np.unique(np.array(local_edges_labels)[:,6]).astype(int)
-local_edges = []
-for label in local_labels:
-    edges = np.array(local_edges_labels)
-    edges = edges[edges[:,6] == label,:6]
-    local_edges.append(edges)
-    
 # %%
-fig,ax=plt.subplots(subplot_kw={'projection':'3d'})
-for i in range(len(local_edges)):
-    edge = local_edges[i]
-    node = np.vstack((edge[:,:3],edge[-1,3:]))
-    ax.plot(node[:,0],node[:,1],node[:,2])
-plt.show()
-# %%
-local_entanglement = fF.return_entanglement()
-print(f'local entanglement: {local_entanglement}')
+local_edges_labels = fF.analyze_local_volume_from_precomputed(np.array([0,0,0]), R_omega, 0.01)
 
 # %%
 all_nodes = np.vstack(list_of_arrays)
@@ -81,7 +64,7 @@ xlim = [np.min(all_nodes[:,0]),np.max(all_nodes[:,0])]
 ylim = [np.min(all_nodes[:,1]),np.max(all_nodes[:,1])]
 zlim = [np.min(all_nodes[:,2]),np.max(all_nodes[:,2])]
 
-num_1dgrid_points = 10
+num_1dgrid_points = 30
 mg = np.meshgrid(np.linspace(xlim[0],xlim[1],num_1dgrid_points),
                     np.linspace(ylim[0],ylim[1],num_1dgrid_points),
                     np.linspace(zlim[0],zlim[1],num_1dgrid_points))
@@ -89,26 +72,56 @@ mg = np.meshgrid(np.linspace(xlim[0],xlim[1],num_1dgrid_points),
 query_points = np.vstack([mg[0].flatten(),mg[1].flatten(),mg[2].flatten()]).T
 
 # %%
-entanglement_fields = np.zeros(num_1dgrid_points**3)
+import time
+
+entanglement_fields_local = np.zeros(num_1dgrid_points**3)
+start_time = time.time()
 for i,query_point in enumerate(query_points):
     local_edges_labels = fF.analyze_local_volume(query_point, R_omega, 0.01)
     local_entanglement = fF.return_entanglement()
-    entanglement_fields[i] = local_entanglement
+    entanglement_fields_local[i] = local_entanglement
+print(f'Time taken: {time.time() - start_time}')
+
+entanglement_fields_precomputed = np.zeros(num_1dgrid_points**3)
+start_time = time.time()
+fF.update_filament_nodes_list(list_of_arrays)
+fF.precompute(R_omega)
+for i,query_point in enumerate(query_points):
+    local_edges_labels = fF.analyze_local_volume_from_precomputed(query_point, R_omega, 0.01)
+    local_entanglement = fF.return_entanglement()
+    entanglement_fields_precomputed[i] = local_entanglement
+print(f'Time taken: {time.time() - start_time}')
     
 # %%
-entanglement_image = entanglement_fields.reshape(num_1dgrid_points,num_1dgrid_points,num_1dgrid_points)
-projected_along_z = np.sum(entanglement_image,axis=2)
-fig,ax=plt.subplots()
-ax.imshow(projected_along_z)
+entanglement_image_local = entanglement_fields_local.reshape(num_1dgrid_points,num_1dgrid_points,num_1dgrid_points)
+entanglement_image_precomputed = entanglement_fields_precomputed.reshape(num_1dgrid_points,num_1dgrid_points,num_1dgrid_points)
+
+print(f'Are they exactly same?: not yet...')
+print(f'Fraction of identical elements: {np.sum(entanglement_image_local == entanglement_image_precomputed)/np.prod(entanglement_image_local.shape)}')
+print(f'But they are very close to each other...')
+print(f'Mean absolute difference: {np.mean(np.abs(entanglement_image_local - entanglement_image_precomputed))}')
+print(f'Mean entanglement value: {np.mean(entanglement_image_local)}')
+
+# %%
+projected_along_z_local = np.sum(entanglement_image_local,axis=2)
+projected_along_z_precomputed = np.sum(entanglement_image_precomputed,axis=2)
+
+fig,ax=plt.subplots(1,2)
+plt.colorbar(ax[0].imshow(projected_along_z_local))
+plt.colorbar(ax[1].imshow(projected_along_z_precomputed))
 plt.show()
 
 # %%
-projected_along_y = np.sum(entanglement_image,axis=1)
-fig,ax=plt.subplots()
-ax.imshow(projected_along_y)
+projected_along_y_local = np.sum(entanglement_image_local,axis=1)
+projected_along_y_precomputed = np.sum(entanglement_image_precomputed,axis=1)
+
+fig,ax=plt.subplots(1,2)
+plt.colorbar(ax[0].imshow(projected_along_y_local))
+plt.colorbar(ax[1].imshow(projected_along_y_precomputed))
 plt.show()
+
 
 
     
 
-
+# %%
