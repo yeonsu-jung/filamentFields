@@ -339,10 +339,17 @@ Eigen::MatrixXd filamentFields::analyze_local_volume(const Eigen::Vector3d& quer
     Q /= local_edge_count;
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver(Q);
     Eigen::Vector3d eigenvalues = eigensolver.eigenvalues();
-    // Find maximum absolute eigenvalue
-    double max_eigenvalue = eigenvalues.cwiseAbs().maxCoeff();
-    // Find argmax eigenvalue
-    int max_eigenvalue_index = (eigenvalues.cwiseAbs().array() - max_eigenvalue).cwiseAbs().minCoeff();
+    // // Find maximum absolute eigenvalue
+    // double max_eigenvalue = eigenvalues.cwiseAbs().maxCoeff();
+    // // Find argmax eigenvalue
+    // int max_eigenvalue_index = (eigenvalues.cwiseAbs().array() - max_eigenvalue).cwiseAbs().minCoeff();
+    // orientational_order_parameter = eigenvalues(max_eigenvalue_index);
+
+    // Find the index of the maximum absolute eigenvalue
+    int max_eigenvalue_index;
+    eigenvalues.cwiseAbs().maxCoeff(&max_eigenvalue_index);
+
+    // The orientational order parameter is the eigenvalue with the maximum absolute value
     orientational_order_parameter = eigenvalues(max_eigenvalue_index);
 
     // Entanglement
