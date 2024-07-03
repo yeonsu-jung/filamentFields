@@ -19,7 +19,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 # Find necessary packages
-set(pybind11_DIR /Users/yeonsu/anaconda3/envs/jax-env/lib/python3.8/site-packages/pybind11/share/cmake/pybind11)
+set(pybind11_DIR /home1/99999/yjung3/.local/lib/python3.9/site-packages/pybind11/share/cmake/pybind11)
+# set(pybind11_DIR /Users/yeonsu/anaconda3/envs/jax-env/lib/python3.8/site-packages/pybind11/share/cmake/pybind11)
 find_package(pybind11 REQUIRED)
 
 set(Eigen3_DIR /opt/homebrew/Cellar/eigen/3.4.0_1/share/eigen3/cmake)
@@ -27,6 +28,15 @@ find_package(Eigen3 3.4 REQUIRED)
 
 find_package(TBB REQUIRED)
 
+
+find_package(Python3 REQUIRED COMPONENTS Development)
+include_directories(${Python3_INCLUDE_DIRS})
+
+#/scratch/projects/compilers/intel24.0/oneapi/intelpython/python3.9/include/python3.9
+#scratch/projects/compilers/intel24.0/oneapi/intelpython/python3.9/lib/python3.9
+
+
+include_directories(/home1/99999/yjung3/myenv/include/python3.9)
 include_directories(${EIGEN_INCLUDE_DIRS})
 include_directories(${pybind11_INCLUDE_DIRS})
 
