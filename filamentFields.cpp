@@ -512,6 +512,7 @@ Eigen::MatrixXd filamentFields::analyze_local_volume_from_precomputed(const Eige
     return local_edges_and_labels;
 }
 
+// Serial version:
 // Eigen::MatrixXd filamentFields::analyze_local_volume_over_domain(const Eigen::MatrixX3d& query_points, double R_omega, double rod_radius) {
 //     Eigen::MatrixXd results(query_points.rows(), 6);
 //     for (int i = 0; i < query_points.rows(); ++i) {
@@ -522,8 +523,7 @@ Eigen::MatrixXd filamentFields::analyze_local_volume_from_precomputed(const Eige
 //     return results;
 // }
 
-// Assuming filamentFields::analyze_local_volume_from_precomputed is a member function of the class filamentFields and is thread-safe.
-
+// Parallel version
 Eigen::MatrixXd filamentFields::analyze_local_volume_over_domain(const Eigen::MatrixX3d& query_points, double R_omega, double rod_radius) {
     Eigen::Matrix<double, Eigen::Dynamic, 6, Eigen::RowMajor> results(query_points.rows(), 6);
 
