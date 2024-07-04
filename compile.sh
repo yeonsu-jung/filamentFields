@@ -7,6 +7,6 @@ cmake --fresh ..
 time make -j4
 
 
-
+cp /Users/yeonsu/GitHub/filamentFields/filamentFields.cpython-38-darwin.so /Users/yeonsu/GitHub/entanglement-optimization/.
 
 # cmake --fresh -DCREATE_DOCS=ON ..
