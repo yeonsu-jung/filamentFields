@@ -4,3 +4,9 @@ build/*
 filamentFieldsTest
 .DS_Store
 .ipynb_checkpoints/test-checkpoint.ipynb
+
+*.e*
+*.o*
+*.png
+
+filamentFieldsTest
