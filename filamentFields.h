@@ -40,6 +40,7 @@ public:
     Eigen::MatrixXd analyze_local_volume(const Eigen::Vector3d& query_point, double R_omega, double rod_radius);
     Eigen::MatrixXd analyze_local_volume_from_precomputed(const Eigen::Vector3d& query_point, double R_omega, double rod_radius);    
     Eigen::MatrixXd analyze_local_volume_over_domain(const Eigen::MatrixX3d& query_points, double R_omega, double rod_radius);
+    Eigen::MatrixXd analyze_local_volume_over_domain_from_precomputed(const Eigen::MatrixX3d& query_points, double R_omega, double rod_radius);
 
     double compute_linking_number_for_edges(const Eigen::VectorXd& e_i, const Eigen::VectorXd& e_j) const;
     void compute_edge_wise_entanglement(const Eigen::MatrixXd& _all_edges, const Eigen::VectorXi& _edge_labels, Eigen::MatrixXd& entanglement_matrix);
