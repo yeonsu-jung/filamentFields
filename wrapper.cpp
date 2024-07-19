@@ -34,6 +34,6 @@ PYBIND11_MODULE(filamentFields, m) {
         .def("sample_edges_locally", &filamentFields::sample_edges_locally)
         .def("analyze_local_volume", &filamentFields::analyze_local_volume)
         .def("analyze_local_volume_from_precomputed", &filamentFields::analyze_local_volume_from_precomputed)
-        .def("analyze_local_volume_over_domain", &filamentFields::analyze_local_volume_over_domain);
-        
+        .def("analyze_local_volume_over_domain", &filamentFields::analyze_local_volume_over_domain)
+        .def("analyze_local_volume_over_domain_from_precomputed", &filamentFields::analyze_local_volume_over_domain_from_precomputed);        
 }
