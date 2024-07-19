@@ -543,6 +543,32 @@ Eigen::MatrixXd filamentFields::analyze_local_volume_over_domain(const Eigen::Ma
     return results;
 }
 
+Eigen::MatrixXd filamentFields::analyze_local_volume_over_domain_from_precomputed(const Eigen::MatrixX3d& query_points, double R_omega, double rod_radius) {
+    Eigen::Matrix<double, Eigen::Dynamic, 6, Eigen::RowMajor> results(query_points.rows(), 6);
+
+    // Using TBB's parallel_for to parallelize the loop
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, query_points.rows()),
+        [&](const tbb::blocked_range<size_t>& range) {
+            for (size_t i = range.begin(); i != range.end(); ++i) {
+                Eigen::Vector3d query_point = query_points.row(i);
+                // Call the function that analyzes the local volume for the given point
+                analyze_local_volume_from_precomputed(query_point, R_omega, rod_radius);
+                // Assuming the function populates these variables accordingly
+                results.row(i) << number_of_labels, volume_fraction, orientational_order_parameter, local_entanglement, number_of_local_contacts, force_sum;
+            }
+        }
+    );
+
+    // serial
+    // for (int i = 0; i < query_points.rows(); ++i) {
+    //     Eigen::Vector3d query_point = query_points.row(i);
+    //     analyze_local_volume_from_precomputed(query_point, R_omega, rod_radius);
+    //     results.row(i) << number_of_labels, volume_fraction, orientational_order_parameter, local_entanglement, number_of_local_contacts, force_sum;
+    // }
+
+    return results;
+}
+
 
 // Eigen::MatrixXd filamentFields::analyze_local_volume_over_domain(const Eigen::MatrixX3d& query_points, double R_omega, double rod_radius) {
 //     Eigen::Matrix<double, Eigen::Dynamic, 6, Eigen::RowMajor> results(query_points.rows(), 6);
