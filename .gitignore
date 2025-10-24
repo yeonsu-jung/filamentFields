@@ -10,3 +10,6 @@ filamentFieldsTest
 *.png
 
 filamentFieldsTest
+
+build_release/*
+build_debug/*
