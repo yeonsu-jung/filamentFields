@@ -13,3 +13,8 @@ filamentFieldsTest
 
 build_release/*
 build_debug/*
+.venv/
+entanglement_proj.png
+*.ini
+
+movie_frames/*

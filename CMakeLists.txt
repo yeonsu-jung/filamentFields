@@ -19,9 +19,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 # Find necessary packages
-# set(pybind11_DIR /home1/99999/yjung3/.local/lib/python3.9/site-packages/pybind11/share/cmake/pybind11)
-set(pybind11_DIR /Users/yeonsu/anaconda3/envs/jax-env/lib/python3.8/site-packages/pybind11/share/cmake/pybind11)
-find_package(pybind11 REQUIRED)
+# Allow overriding pybind11 location via cache or env but do not hard-code path
+if(NOT pybind11_DIR AND DEFINED ENV{PYBIND11_DIR})
+	set(pybind11_DIR $ENV{PYBIND11_DIR})
+endif()
+if(NOT pybind11_DIR AND DEFINED ENV{Pybind11_DIR})
+	set(pybind11_DIR $ENV{Pybind11_DIR})
+endif()
+find_package(pybind11 CONFIG REQUIRED)
 
 set(Eigen3_DIR /opt/homebrew/Cellar/eigen/3.4.0_1/share/eigen3/cmake)
 find_package(Eigen3 3.4 REQUIRED)
