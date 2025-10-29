@@ -71,3 +71,25 @@ PYTHONPATH=$(pwd) pytest -q
 
 - If you use Anaconda, ensure CMake finds the correct pybind11 and Python headers. You can override `pybind11_DIR` via environment variable `PYBIND11_DIR`.
 - The CMakeLists was updated to avoid hard-coding a specific Anaconda path for pybind11.
+
+### Building for a specific Python version (e.g., 3.8)
+
+Compiled extensions are specific to a Python minor version (3.8 vs 3.9 vs 3.13). To build for Python 3.8:
+
+1) Activate a Python 3.8 environment (conda or venv)
+
+```bash
+conda create -n filfields-py38 python=3.8 -y
+conda activate filfields-py38
+pip install -r requirements.txt cmake pybind11
+```
+
+2) Build the extension using the active interpreter
+
+```bash
+./build_for_python.sh
+```
+
+This will produce `filamentFields.cpython-38-*.so` in the repo root. You can keep multiple versions side-by-side (e.g., 3.8 and 3.13); Python will import the one matching its version when `PYTHONPATH=$(pwd)` is used.
+
+Note: Ensure your Python and system/toolchain architectures match (arm64 vs x86_64). On Apple Silicon, prefer arm64 Python 3.8 if available.

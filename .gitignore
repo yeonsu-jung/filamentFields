@@ -13,6 +13,7 @@ filamentFieldsTest
 
 build_release/*
 build_debug/*
+build_current/*
 .venv/
 entanglement_proj.png
 *.ini
