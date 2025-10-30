@@ -30,6 +30,9 @@ PYBIND11_MODULE(filamentFields, m) {
         .def("return_filament_linking_matrix", &filamentFields::return_filament_linking_matrix)
         .def("compute_total_linking_matrix", &filamentFields::compute_total_linking_matrix)
         .def("compute_filament_linking_matrix", &filamentFields::compute_filament_linking_matrix)
+       .def("compute_total_entanglement_streaming", &filamentFields::compute_total_entanglement_streaming,
+           py::arg("R_omega"))
+       .def("return_edge_pair_count", &filamentFields::return_edge_pair_count)
         .def("precompute", &filamentFields::precompute)
         .def("sample_edges_locally", &filamentFields::sample_edges_locally)
         .def("analyze_local_volume", &filamentFields::analyze_local_volume)

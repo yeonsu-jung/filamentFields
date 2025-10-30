@@ -6,6 +6,7 @@
 #include <iostream>
 #include <algorithm>
 #include <mutex>
+#include <numeric>
 // #include <cmath>
 
 filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list) :
@@ -93,6 +94,27 @@ void filamentFields::get_all_edges() {
     }
 }
 
+// Build per-filament AABBs (not currently used in broad-phase but available for future culling)
+void filamentFields::build_filament_aabbs() {
+    filament_aabbs.clear();
+    filament_aabbs.reserve(filament_nodes_list.size());
+    for (const auto& nodes : filament_nodes_list) {
+        filament_aabbs.emplace_back(AABB::fromNodes(nodes));
+    }
+}
+
+// Build per-edge AABBs expanded by a radius (used for broad-phase culling)
+void filamentFields::build_edge_aabbs(double expand_radius) {
+    const int N = static_cast<int>(all_edges.rows());
+    edge_aabbs.resize(std::max(0, N));
+    for (int i = 0; i < N; ++i) {
+        Eigen::Vector3d a = all_edges.row(i).segment<3>(0);
+        Eigen::Vector3d b = all_edges.row(i).segment<3>(3);
+        edge_aabbs[i] = AABB::fromSegment(a, b);
+        if (expand_radius > 0) edge_aabbs[i].expand(expand_radius);
+    }
+}
+
 
 void filamentFields::get_node_labels() {
     node_labels = Eigen::VectorXi::Zero(all_nodes.rows());
@@ -118,29 +140,44 @@ void filamentFields::get_edge_labels() {
 
 void filamentFields::get_edge_pairs(double R_omega) {
     edge_pairs.clear();
-    edge_pairs.reserve(all_edges.rows());
+    const int N = static_cast<int>(all_edges.rows());
+    edge_pairs.reserve(static_cast<size_t>(std::min<long long>(1LL * N * 4, 500000LL))); // heuristic
 
-    edge_lengths = Eigen::VectorXd::Zero(all_edges.rows());
-    for (int idx = 0; idx < all_edges.rows(); ++idx) {
-        Eigen::Vector3d edge1_start = all_edges.row(idx).segment<3>(0);
-        Eigen::Vector3d edge1_end = all_edges.row(idx).segment<3>(3);
-        edge_lengths(idx) = (edge1_end - edge1_start).norm();
+    // Precompute edge lengths (used elsewhere)
+    edge_lengths = Eigen::VectorXd::Zero(N);
+    for (int idx = 0; idx < N; ++idx) {
+        const Eigen::Vector3d s = all_edges.row(idx).segment<3>(0);
+        const Eigen::Vector3d e = all_edges.row(idx).segment<3>(3);
+        edge_lengths(idx) = (e - s).norm();
+    }
 
-        for (int jdx = idx + 1; jdx < all_edges.rows(); ++jdx) {
-            if (edge_labels(idx) == edge_labels(jdx)) {
-                continue;
-            }
+    // Broad-phase: build expanded AABBs and sweep-and-prune along X
+    build_edge_aabbs(R_omega);
+    std::vector<int> order;
+    order.resize(N);
+    if (N > 0) std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](int i, int j){
+        return edge_aabbs[i].min.x() < edge_aabbs[j].min.x();
+    });
 
-            Eigen::Vector3d edge2_start = all_edges.row(jdx).segment<3>(0);
-            Eigen::Vector3d edge2_end = all_edges.row(jdx).segment<3>(3);
+    for (int ii_idx = 0; ii_idx < N; ++ii_idx) {
+        const int i = order[ii_idx];
+        const double curMaxX = edge_aabbs[i].max.x();
+        for (int jj_idx = ii_idx + 1; jj_idx < N; ++jj_idx) {
+            const int j = order[jj_idx];
+            if (edge_aabbs[j].min.x() > curMaxX) break; // no further overlaps in X
 
-            double dist1 = (edge1_start - edge2_start).norm();
-            double dist2 = (edge1_start - edge2_end).norm();
-            double dist3 = (edge1_end - edge2_start).norm();
-            double dist4 = (edge1_end - edge2_end).norm();
-            if (dist1 < R_omega && dist2 < R_omega && dist3 < R_omega && dist4 < R_omega) {
-                edge_pairs.push_back(std::make_pair(idx, jdx));
-            }
+            // Skip same-filament pairs early
+            if (edge_labels(i) == edge_labels(j)) continue;
+
+            // Check Y and Z interval overlap
+            const AABB& A = edge_aabbs[i];
+            const AABB& B = edge_aabbs[j];
+            if (A.max.y() < B.min.y() || A.min.y() > B.max.y()) continue;
+            if (A.max.z() < B.min.z() || A.min.z() > B.max.z()) continue;
+
+            // Overlaps in all three axes -> candidate pair
+            edge_pairs.emplace_back(i, j);
         }
     }
 
@@ -208,6 +245,37 @@ void filamentFields::compute_total_linking_matrix() {
     // total_entanglement = total_linking_matrix.unaryExpr([](double x) -> double {
     //     return std::isnan(x) ? 0.0 : std::abs(x);
     // }).sum();
+}
+
+// Compute global entanglement by summing |lk| over candidate edge pairs
+// without allocating a dense num_edges x num_edges matrix.
+double filamentFields::compute_total_entanglement_streaming(double R_omega) {
+    // Build candidate pairs using broad-phase culling
+    get_edge_pairs(R_omega);
+
+    const std::vector<std::pair<int,int>> edge_pairs_vector(edge_pairs.begin(), edge_pairs.end());
+
+    double total = tbb::parallel_reduce(
+        tbb::blocked_range<size_t>(0, edge_pairs_vector.size()),
+        0.0,
+        [&](const tbb::blocked_range<size_t>& r, double local_sum) -> double {
+            for (size_t i = r.begin(); i != r.end(); ++i) {
+                const auto& p = edge_pairs_vector[i];
+                int idx = p.first;
+                int jdx = p.second;
+                if (edge_labels(idx) == edge_labels(jdx)) continue;
+                const Eigen::VectorXd edge1 = all_edges.row(idx);
+                const Eigen::VectorXd edge2 = all_edges.row(jdx);
+                double lk = filamentFields::compute_linking_number_for_edges(edge1, edge2);
+                local_sum += std::abs(lk);
+            }
+            return local_sum;
+        },
+        std::plus<double>()
+    );
+
+    total_entanglement = total;
+    return total;
 }
 
 void filamentFields::compute_filament_linking_matrix() {

@@ -50,9 +50,48 @@ public:
     void compute_filament_linking_matrix();
     void compute_all_Q_tensors();
     void compute_all_edge_lengths();
+    // Streaming/global entanglement without allocating dense NxN matrix
+    double compute_total_entanglement_streaming(double R_omega);
+    long long return_edge_pair_count() const { return static_cast<long long>(edge_pairs.size()); }
     
 
 private:
+    // Simple axis-aligned bounding box used for broad-phase culling
+    struct AABB {
+        Eigen::Vector3d min;
+        Eigen::Vector3d max;
+
+        static AABB fromSegment(const Eigen::Vector3d& a, const Eigen::Vector3d& b) {
+            AABB box;
+            box.min = a.cwiseMin(b);
+            box.max = a.cwiseMax(b);
+            return box;
+        }
+
+        static AABB fromNodes(const Eigen::MatrixXd& nodes) {
+            AABB box;
+            if (nodes.rows() == 0) {
+                box.min.setZero();
+                box.max.setZero();
+                return box;
+            }
+            box.min = nodes.colwise().minCoeff();
+            box.max = nodes.colwise().maxCoeff();
+            return box;
+        }
+
+        inline void expand(double r) {
+            Eigen::Vector3d e(r, r, r);
+            min -= e;
+            max += e;
+        }
+
+        inline bool overlaps(const AABB& other) const {
+            return (min.x() <= other.max.x() && max.x() >= other.min.x()) &&
+                   (min.y() <= other.max.y() && max.y() >= other.min.y()) &&
+                   (min.z() <= other.max.z() && max.z() >= other.min.z());
+        }
+    };
     // these are local variables
     int number_of_labels;
     double volume_fraction;
@@ -67,12 +106,14 @@ private:
 
     std::vector<Eigen::MatrixXd> filament_nodes_list;
     std::vector<Eigen::MatrixXd> filament_edges_list;
+    std::vector<AABB> filament_aabbs; // per-filament AABBs
 
     Eigen::MatrixXd contact_array;
     int number_of_total_contacts;
 
     Eigen::MatrixXd all_nodes;
     Eigen::MatrixXd all_edges;
+    std::vector<AABB> edge_aabbs; // per-edge AABBs (expanded by query radius when used)
 
     Eigen::VectorXi node_labels;
     Eigen::VectorXi edge_labels;
@@ -90,6 +131,8 @@ private:
 
     void get_all_nodes();
     void get_all_edges();
+    void build_filament_aabbs();
+    void build_edge_aabbs(double expand_radius);
 
     void get_edge_pairs(double R_omega);
 

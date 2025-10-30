@@ -19,3 +19,7 @@ entanglement_proj.png
 *.ini
 
 movie_frames/*
+Fast_Linking_Number_Methods_Qu_James_2021.md
+Qu and James - 2021 - Fast linking numbers for topology verification of .pdf
+tests/cfg_placed_121600.csv
+tests/rods_npbc.cpp
