@@ -27,7 +27,10 @@ cd "$BUILD_DIR"
 cmake .. \
   -DPYBIND11_FINDPYTHON=ON \
   -DPython_EXECUTABLE="$PY_EXE" \
-  -DPybind11_DIR="$PYBIND11_DIR"
+  -Dpybind11_DIR="$PYBIND11_DIR" \
+  ${Eigen3_DIR:+-DEigen3_DIR="$Eigen3_DIR"} \
+  ${EIGEN3_DIR:+-DEigen3_DIR="$EIGEN3_DIR"} \
+  ${TBB_DIR:+-DTBB_DIR="$TBB_DIR"}
 
 cmake --build . -- -j
 

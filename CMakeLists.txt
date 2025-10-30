@@ -28,8 +28,14 @@ if(NOT pybind11_DIR AND DEFINED ENV{Pybind11_DIR})
 endif()
 find_package(pybind11 CONFIG REQUIRED)
 
-set(Eigen3_DIR /opt/homebrew/Cellar/eigen/3.4.0_1/share/eigen3/cmake)
-find_package(Eigen3 3.4 REQUIRED)
+# Respect user/env-provided Eigen3 location if available; otherwise rely on default FindEigen3
+if(NOT Eigen3_DIR AND DEFINED ENV{Eigen3_DIR})
+	set(Eigen3_DIR $ENV{Eigen3_DIR})
+endif()
+if(NOT Eigen3_DIR AND DEFINED ENV{EIGEN3_DIR})
+	set(Eigen3_DIR $ENV{EIGEN3_DIR})
+endif()
+find_package(Eigen3 3.3 REQUIRED)
 
 find_package(TBB REQUIRED)
 
