@@ -3,6 +3,12 @@
   (0.1591549430918953357688837633725143620344596457404564487476673440)
 
 #include "filamentFields.h"
+#ifdef FILAMENTFIELDS_WITH_CUDA
+#include "cuda_streaming_api.cuh"
+#endif
+#ifdef FILAMENTFIELDS_WITH_CUDA
+#include "cuda_streaming_api.cuh"
+#endif
 #include <iostream>
 #include <algorithm>
 #include <mutex>
@@ -224,28 +230,6 @@ void filamentFields::compute_total_linking_matrix() {
     total_entanglement = total_linking_matrix.unaryExpr([](double x) -> double {
         return std::isnan(x) ? 0.0 : std::abs(x);
     }).sum();
-
-    // int num_edges = all_edges.rows();
-    // total_linking_matrix = Eigen::MatrixXd::Zero(num_edges, num_edges);
-    // total_linking_matrix.setConstant(std::numeric_limits<double>::quiet_NaN());
-
-    // // filamentFields::compute_edge_wise_entanglement(all_edges, edge_labels, total_linking_matrix);
-    // for (auto& pair : edge_pairs) {
-    //     int idx = pair.first;
-    //     int jdx = pair.second;
-    //     if (edge_labels(idx) == edge_labels(jdx)) {
-    //         continue;
-    //     }
-    //     const Eigen::VectorXd edge1 = all_edges.row(idx);
-    //     const Eigen::VectorXd edge2 = all_edges.row(jdx);
-    //     double lk = filamentFields::compute_linking_number_for_edges(edge1, edge2);
-    //     total_linking_matrix(idx, jdx) = lk;
-    // }
-
-    // Build per-filament AABBs (not currently used in broad-phase but available for future culling)
-    // total_entanglement = total_linking_matrix.unaryExpr([](double x) -> double {
-    //     return std::isnan(x) ? 0.0 : std::abs(x);
-    // }).sum();
 }
 
 // Compute global entanglement by summing |lk| over candidate edge pairs
@@ -277,6 +261,48 @@ double filamentFields::compute_total_entanglement_streaming(double R_omega) {
 
     total_entanglement = total;
     return total;
+}
+
+// (GPU streaming implementation defined once below)
+
+double filamentFields::compute_total_entanglement_streaming_gpu(double R_omega) {
+#ifndef FILAMENTFIELDS_WITH_CUDA
+    throw std::runtime_error("CUDA not enabled: rebuild with -DFF_WITH_CUDA=ON");
+#else
+    // Build candidate pairs using broad-phase culling
+    get_edge_pairs(R_omega);
+    const int num_edges = static_cast<int>(all_edges.rows());
+    const int num_pairs = static_cast<int>(edge_pairs.size());
+    if (num_edges == 0 || num_pairs == 0) { total_entanglement = 0.0; return 0.0; }
+
+    // Pack edges into row-major array (6 doubles per edge)
+    std::vector<double> edges_rm;
+    edges_rm.resize(static_cast<size_t>(num_edges) * 6);
+    for (int i = 0; i < num_edges; ++i) {
+        for (int k = 0; k < 6; ++k) {
+            edges_rm[static_cast<size_t>(i) * 6 + k] = all_edges(i, k);
+        }
+    }
+
+    // Pack pairs
+    std::vector<FFPairIJ> pairs;
+    pairs.resize(static_cast<size_t>(num_pairs));
+    {
+        size_t t = 0;
+        for (const auto& p : edge_pairs) { pairs[t].x = p.first; pairs[t].y = p.second; ++t; }
+    }
+
+    // Labels array
+    std::vector<int> labels(num_edges);
+    for (int i = 0; i < num_edges; ++i) labels[i] = edge_labels(i);
+
+    double total = ff_streaming_total_abs_lk_host(edges_rm.data(), num_edges, pairs.data(), num_pairs, labels.data());
+    if (total < 0.0) {
+        throw std::runtime_error("CUDA kernel failure in streaming GPU path");
+    }
+    total_entanglement = total;
+    return total;
+#endif
 }
 
 void filamentFields::build_edge_octree(int maxLeafSize) {

@@ -52,6 +52,8 @@ public:
     void compute_all_edge_lengths();
     // Streaming/global entanglement without allocating dense NxN matrix
     double compute_total_entanglement_streaming(double R_omega);
+    // GPU-accelerated streaming variant (requires CUDA build). Falls back to error if unavailable.
+    double compute_total_entanglement_streaming_gpu(double R_omega);
     long long return_edge_pair_count() const { return static_cast<long long>(edge_pairs.size()); }
     // Barnes–Hut style near/far split with opening angle theta; returns total and sets outErrorBound
     std::pair<double,double> compute_total_entanglement_bh(double theta = 0.5, int maxLeafSize = 64);

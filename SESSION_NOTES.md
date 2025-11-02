@@ -58,6 +58,54 @@ print('OK:', ff)
 PY
 ```
 
+## CUDA/GPU build and test on FAS RC
+
+On the FAS RC cluster, compile CUDA code on a GPU node and load the CUDA toolkit module.
+
+- Interactive session (quick):
+
+```bash
+salloc -p gpu_test -t 0-01:00 --mem 8000 --gres=gpu:1
+module load cuda
+module load cmake
+# Optional: module load gcc
+cd /path/to/rod-placement/extern/filamentFields
+cmake -S . -B build_current -DFF_WITH_CUDA=ON \
+  -DPYBIND11_FINDPYTHON=ON \
+  -DPython_EXECUTABLE="$(python3 -c 'import sys; print(sys.executable)')"
+cmake --build build_current --target ff_cuda_smoke -j 8
+./ff_cuda_smoke
+```
+
+- Batch job (recommended repeatable):
+
+```bash
+cd /path/to/rod-placement/extern/filamentFields
+sbatch sbatch_cuda_build_and_smoke.sh
+```
+
+Notes:
+- SLURM GPUs: request with `--gres=gpu:1` and pick a GPU partition such as `gpu_test`, `gpu`, or `gpu_requeue`.
+- You can check the device and driver/toolkit with `nvidia-smi` on the GPU node.
+- Default CUDA architectures in CMake are set to build for V100/A100/H100 (70;80;90). Override with `-DCMAKE_CUDA_ARCHITECTURES=80` if desired.
+
+### Build the Python module with CUDA and run the GPU streaming test
+
+```bash
+# on a GPU node with cuda + cmake modules loaded
+cd /path/to/rod-placement/extern/filamentFields
+cmake -S . -B build_current -DFF_WITH_CUDA=ON \
+  -DPYBIND11_FINDPYTHON=ON \
+  -DPython_EXECUTABLE="$(python3 -c 'import sys; print(sys.executable)')"
+cmake --build build_current -j 8
+
+# Run the Python GPU/CPU comparison
+PYTHONPATH=. python tests/gpu_streaming_smoke.py
+```
+
+This compares CPU `compute_total_entanglement_streaming(R)` with GPU `compute_total_entanglement_streaming_gpu(R)` on a small synthetic set and prints timings and relative error.
+
+
 ## Running the large CSV (121,600 rods)
 
 - Streaming (R-limited) global total:

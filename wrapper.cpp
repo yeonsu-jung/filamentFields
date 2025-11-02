@@ -32,6 +32,8 @@ PYBIND11_MODULE(filamentFields, m) {
         .def("compute_filament_linking_matrix", &filamentFields::compute_filament_linking_matrix)
        .def("compute_total_entanglement_streaming", &filamentFields::compute_total_entanglement_streaming,
            py::arg("R_omega"))
+        .def("compute_total_entanglement_streaming_gpu", &filamentFields::compute_total_entanglement_streaming_gpu,
+            py::arg("R_omega"))
        .def("return_edge_pair_count", &filamentFields::return_edge_pair_count)
         .def("compute_total_entanglement_bh",
              [](filamentFields& self, double theta, int maxLeaf){
