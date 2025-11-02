@@ -53,6 +53,8 @@ public:
     // Streaming/global entanglement without allocating dense NxN matrix
     double compute_total_entanglement_streaming(double R_omega);
     long long return_edge_pair_count() const { return static_cast<long long>(edge_pairs.size()); }
+    // Barnes–Hut style near/far split with opening angle theta; returns total and sets outErrorBound
+    std::pair<double,double> compute_total_entanglement_bh(double theta = 0.5, int maxLeafSize = 64);
     
 
 private:
@@ -91,6 +93,18 @@ private:
                    (min.y() <= other.max.y() && max.y() >= other.min.y()) &&
                    (min.z() <= other.max.z() && max.z() >= other.min.z());
         }
+        inline double halfDiagonal() const {
+            Eigen::Vector3d d = max - min;
+            return 0.5 * d.norm();
+        }
+    };
+    // Simple BH octree node
+    struct BHNode {
+        AABB box;
+        double total_length = 0.0; // sum of segment lengths in this node (conservative bound)
+        int children[8] = {-1,-1,-1,-1,-1,-1,-1,-1};
+        std::vector<int> indices; // edge indices for leaf
+        bool isLeaf = true;
     };
     // these are local variables
     int number_of_labels;
@@ -114,6 +128,7 @@ private:
     Eigen::MatrixXd all_nodes;
     Eigen::MatrixXd all_edges;
     std::vector<AABB> edge_aabbs; // per-edge AABBs (expanded by query radius when used)
+    std::vector<BHNode> bh_nodes; // octree nodes for BH traversal
 
     Eigen::VectorXi node_labels;
     Eigen::VectorXi edge_labels;
@@ -133,6 +148,11 @@ private:
     void get_all_edges();
     void build_filament_aabbs();
     void build_edge_aabbs(double expand_radius);
+    void build_edge_octree(int maxLeafSize);
+    int build_bh_node(const std::vector<int>& idxs, int maxLeafSize);
+    void bh_accumulate_edge(int edgeIndex, double theta, double& total, double& errBound) const;
+    void bh_traverse_edge_node(int edgeIndex, const AABB& edgeBox, double edgeLen, int nodeIdx, double theta, double& total, double& errBound) const;
+    static double aabb_distance(const AABB& a, const AABB& b);
 
     void get_edge_pairs(double R_omega);
 

@@ -33,6 +33,12 @@ PYBIND11_MODULE(filamentFields, m) {
        .def("compute_total_entanglement_streaming", &filamentFields::compute_total_entanglement_streaming,
            py::arg("R_omega"))
        .def("return_edge_pair_count", &filamentFields::return_edge_pair_count)
+        .def("compute_total_entanglement_bh",
+             [](filamentFields& self, double theta, int maxLeaf){
+                 auto res = self.compute_total_entanglement_bh(theta, maxLeaf);
+                 return py::make_tuple(res.first, res.second);
+             },
+             py::arg("theta") = 0.5, py::arg("maxLeaf") = 64)
         .def("precompute", &filamentFields::precompute)
         .def("sample_edges_locally", &filamentFields::sample_edges_locally)
         .def("analyze_local_volume", &filamentFields::analyze_local_volume)

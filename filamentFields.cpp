@@ -242,6 +242,7 @@ void filamentFields::compute_total_linking_matrix() {
     //     total_linking_matrix(idx, jdx) = lk;
     // }
 
+    // Build per-filament AABBs (not currently used in broad-phase but available for future culling)
     // total_entanglement = total_linking_matrix.unaryExpr([](double x) -> double {
     //     return std::isnan(x) ? 0.0 : std::abs(x);
     // }).sum();
@@ -278,6 +279,153 @@ double filamentFields::compute_total_entanglement_streaming(double R_omega) {
     return total;
 }
 
+void filamentFields::build_edge_octree(int maxLeafSize) {
+    // Ensure we have unexpanded edge AABBs and lengths
+    if (all_edges.rows() == 0) return;
+    build_edge_aabbs(0.0);
+    compute_all_edge_lengths();
+
+    // initial index list
+    std::vector<int> idxs(all_edges.rows());
+    for (int i = 0; i < all_edges.rows(); ++i) idxs[i] = i;
+    bh_nodes.clear();
+    bh_nodes.reserve(all_edges.rows());
+    build_bh_node(idxs, maxLeafSize);
+}
+
+int filamentFields::build_bh_node(const std::vector<int>& idxs, int maxLeafSize) {
+    BHNode node;
+    // compute bounding box and length sum
+    if (idxs.empty()) {
+        node.box.min.setZero();
+        node.box.max.setZero();
+    } else {
+        node.box = edge_aabbs[idxs[0]];
+        double totalLen = 0.0;
+        for (int k : idxs) {
+            const AABB& eb = edge_aabbs[k];
+            node.box.min = node.box.min.cwiseMin(eb.min);
+            node.box.max = node.box.max.cwiseMax(eb.max);
+            totalLen += edge_lengths(k);
+        }
+        node.total_length = totalLen;
+    }
+
+    bool makeLeaf = static_cast<int>(idxs.size()) <= maxLeafSize;
+    int myIdx = static_cast<int>(bh_nodes.size());
+    bh_nodes.push_back(node);
+
+    if (idxs.empty() || makeLeaf) {
+        bh_nodes[myIdx].indices = idxs;
+        bh_nodes[myIdx].isLeaf = true;
+        return myIdx;
+    }
+
+    bh_nodes[myIdx].isLeaf = false;
+    // split into 8 octants by center
+    Eigen::Vector3d c = 0.5 * (node.box.min + node.box.max);
+    std::vector<int> childIdxs[8];
+    childIdxs[0].reserve(idxs.size()); childIdxs[1].reserve(idxs.size());
+    childIdxs[2].reserve(idxs.size()); childIdxs[3].reserve(idxs.size());
+    childIdxs[4].reserve(idxs.size()); childIdxs[5].reserve(idxs.size());
+    childIdxs[6].reserve(idxs.size()); childIdxs[7].reserve(idxs.size());
+    for (int k : idxs) {
+        // use edge midpoint to choose octant
+        Eigen::Vector3d a = all_edges.row(k).segment<3>(0);
+        Eigen::Vector3d b = all_edges.row(k).segment<3>(3);
+        Eigen::Vector3d m = 0.5 * (a + b);
+        int ix = (m.x() > c.x()) ? 1 : 0;
+        int iy = (m.y() > c.y()) ? 1 : 0;
+        int iz = (m.z() > c.z()) ? 1 : 0;
+        int ci = (ix) | (iy << 1) | (iz << 2);
+        childIdxs[ci].push_back(k);
+    }
+    for (int i = 0; i < 8; ++i) {
+        if (childIdxs[i].empty()) { bh_nodes[myIdx].children[i] = -1; continue; }
+        bh_nodes[myIdx].children[i] = build_bh_node(childIdxs[i], maxLeafSize);
+    }
+    return myIdx;
+}
+
+double filamentFields::aabb_distance(const AABB& a, const AABB& b) {
+    auto gap = [](double amin, double amax, double bmin, double bmax){
+        if (amax < bmin) return bmin - amax;
+        if (bmax < amin) return amin - bmax;
+        return 0.0;
+    };
+    double dx = gap(a.min.x(), a.max.x(), b.min.x(), b.max.x());
+    double dy = gap(a.min.y(), a.max.y(), b.min.y(), b.max.y());
+    double dz = gap(a.min.z(), a.max.z(), b.min.z(), b.max.z());
+    return std::sqrt(dx*dx + dy*dy + dz*dz);
+}
+
+void filamentFields::bh_accumulate_edge(int edgeIndex, double theta, double& total, double& errBound) const {
+    if (bh_nodes.empty()) return;
+    AABB edgeBox = AABB::fromSegment(all_edges.row(edgeIndex).segment<3>(0), all_edges.row(edgeIndex).segment<3>(3));
+    double edgeLen = edge_lengths(edgeIndex);
+    bh_traverse_edge_node(edgeIndex, edgeBox, edgeLen, /*nodeIdx*/0, theta, total, errBound);
+}
+
+void filamentFields::bh_traverse_edge_node(int edgeIndex, const AABB& edgeBox, double edgeLen, int nodeIdx, double theta, double& total, double& errBound) const {
+    const BHNode& node = bh_nodes[nodeIdx];
+    // opening criterion
+    double d = aabb_distance(edgeBox, node.box);
+    double s = node.box.halfDiagonal();
+    const double eps_d = 1e-12;
+    if (!node.isLeaf && (s / (d + eps_d) < theta)) {
+        // Accept far-node bound (drop contribution, add to error bound)
+        // Bound: ~ (1/2π) * (L_edge * sum(L_j)) / d^2
+        double C = INV_TWO_PI;
+        double bound = C * (edgeLen * node.total_length) / ((d + eps_d) * (d + eps_d));
+        errBound += bound;
+        return;
+    }
+
+    if (node.isLeaf) {
+        for (int j : node.indices) {
+            if (j <= edgeIndex) continue; // avoid double-counting and self
+            if (edge_labels(edgeIndex) == edge_labels(j)) continue; // skip same filament
+            const Eigen::VectorXd e1 = all_edges.row(edgeIndex);
+            const Eigen::VectorXd e2 = all_edges.row(j);
+            double lk = filamentFields::compute_linking_number_for_edges(e1, e2);
+            total += std::abs(lk);
+        }
+        return;
+    }
+
+    // traverse children; prune quickly by distance > 0 with opening angle
+    for (int c = 0; c < 8; ++c) {
+        int ci = node.children[c];
+        if (ci < 0) continue;
+        bh_traverse_edge_node(edgeIndex, edgeBox, edgeLen, ci, theta, total, errBound);
+    }
+}
+
+std::pair<double,double> filamentFields::compute_total_entanglement_bh(double theta, int maxLeafSize) {
+    // Prepare tree
+    build_edge_octree(maxLeafSize);
+    double total = 0.0;
+    double err = 0.0;
+    const int N = static_cast<int>(all_edges.rows());
+    // Parallelize over edges
+    struct Acc { double total; double err; };
+    Acc acc = tbb::parallel_reduce(
+        tbb::blocked_range<int>(0, N),
+        Acc{0.0, 0.0},
+        [&](const tbb::blocked_range<int>& r, Acc local){
+            for (int i = r.begin(); i != r.end(); ++i) {
+                double t = 0.0, e = 0.0;
+                bh_accumulate_edge(i, theta, t, e);
+                local.total += t;
+                local.err += e;
+            }
+            return local;
+        },
+        [](const Acc& a, const Acc& b){ return Acc{a.total + b.total, a.err + b.err}; }
+    );
+    total_entanglement = acc.total; // store last total
+    return {acc.total, acc.err};
+}
 void filamentFields::compute_filament_linking_matrix() {
     int num_filaments = filament_edges_list.size();
 
