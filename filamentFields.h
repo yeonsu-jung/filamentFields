@@ -9,7 +9,9 @@
 class filamentFields {
 public:
     filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list);
+    filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list, bool local_only);
     filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list, const Eigen::MatrixXd& contact_array);
+    filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list, const Eigen::MatrixXd& contact_array, bool local_only);
 
     void update_filament_nodes_list(const std::vector<Eigen::MatrixXd>& _filament_nodes_list);
     void update_contact_array(const Eigen::MatrixXd& _contact_array);
@@ -161,6 +163,28 @@ private:
     double _clip(double x, double lower, double upper) const;
 
     bool is_precomputed = false;
+    bool local_only_mode = false;
+
+    // Helpers for local queries using BH octree when available
+    static double distance_point_aabb(const Eigen::Vector3d& p, const AABB& b) {
+        double dx = 0.0, dy = 0.0, dz = 0.0;
+        if (p.x() < b.min.x()) dx = b.min.x() - p.x(); else if (p.x() > b.max.x()) dx = p.x() - b.max.x();
+        if (p.y() < b.min.y()) dy = b.min.y() - p.y(); else if (p.y() > b.max.y()) dy = p.y() - b.max.y();
+        if (p.z() < b.min.z()) dz = b.min.z() - p.z(); else if (p.z() > b.max.z()) dz = p.z() - b.max.z();
+        return std::sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    static double distance_point_segment(const Eigen::Vector3d& p, const Eigen::Vector3d& a, const Eigen::Vector3d& b) {
+        Eigen::Vector3d ab = b - a;
+        double denom = ab.squaredNorm();
+        if (denom <= 0.0) {
+            return (p - a).norm();
+        }
+        double t = (p - a).dot(ab) / denom;
+        t = std::max(0.0, std::min(1.0, t));
+        Eigen::Vector3d c = a + t * ab;
+        return (p - c).norm();
+    }
+    void collect_edges_in_sphere(const Eigen::Vector3d& q, double R, int nodeIdx, std::vector<int>& out) const;
 
 };
 

@@ -9,7 +9,9 @@ PYBIND11_MODULE(filamentFields, m) {
     // std::cout << "Filament Processing module initialized" << std::endl;
     py::class_<filamentFields>(m, "filamentFields")
         .def(py::init<const std::vector<Eigen::MatrixXd>&>())
+        .def(py::init<const std::vector<Eigen::MatrixXd>&, bool>(), py::arg("filament_nodes_list"), py::arg("local_only"))
         .def(py::init<const std::vector<Eigen::MatrixXd>&, const Eigen::MatrixXd&>())
+        .def(py::init<const std::vector<Eigen::MatrixXd>&, const Eigen::MatrixXd&, bool>(), py::arg("filament_nodes_list"), py::arg("contact_array"), py::arg("local_only"))
         .def("update_filament_nodes_list", &filamentFields::update_filament_nodes_list)
         .def("update_contact_array", &filamentFields::update_contact_array)
         .def("return_filament_nodes_list", &filamentFields::return_filament_nodes_list)

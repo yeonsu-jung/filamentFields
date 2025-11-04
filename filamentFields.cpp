@@ -17,20 +17,38 @@
 
 filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list) :
     filament_nodes_list(filament_nodes_list)
-
 {
     number_of_total_contacts = 0;
     number_of_local_contacts = 0;
     force_sum = 0;
     total_entanglement = 0;
     Q_tensors.clear();
-    Q_tensors.reserve(all_edges.rows());
 
     get_all_nodes();
     get_all_edges();
     get_node_labels();
     get_edge_labels();
+    // Prepare structures for fast local queries (BH octree)
+    build_edge_octree(64);
     // compute_total_linking_matrix();
+}
+
+filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list, bool local_only) :
+    filament_nodes_list(filament_nodes_list)
+{
+    local_only_mode = local_only;
+    number_of_total_contacts = 0;
+    number_of_local_contacts = 0;
+    force_sum = 0;
+    total_entanglement = 0;
+    Q_tensors.clear();
+
+    get_all_nodes();
+    get_all_edges();
+    get_node_labels();
+    get_edge_labels();
+    // In local-only mode, skip any heavy precompute; build octree for fast local queries
+    build_edge_octree(64);
 }
 
 filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list, const Eigen::MatrixXd& contact_array) :
@@ -41,13 +59,30 @@ filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_node
     force_sum = 0;
     total_entanglement = 0;
     Q_tensors.clear();
-    Q_tensors.reserve(all_edges.rows());
 
     get_all_nodes();
     get_all_edges();
     get_node_labels();
     get_edge_labels();
+    build_edge_octree(64);
     // compute_total_linking_matrix();
+}
+
+filamentFields::filamentFields(const std::vector<Eigen::MatrixXd>& filament_nodes_list, const Eigen::MatrixXd& contact_array, bool local_only) :
+    filament_nodes_list(filament_nodes_list), contact_array(contact_array)
+{
+    local_only_mode = local_only;
+    number_of_total_contacts = contact_array.rows();
+    number_of_local_contacts = 0;
+    force_sum = 0;
+    total_entanglement = 0;
+    Q_tensors.clear();
+
+    get_all_nodes();
+    get_all_edges();
+    get_node_labels();
+    get_edge_labels();
+    build_edge_octree(64);
 }
 
 void filamentFields::update_filament_nodes_list(const std::vector<Eigen::MatrixXd>& _filament_nodes_list)
@@ -56,12 +91,12 @@ void filamentFields::update_filament_nodes_list(const std::vector<Eigen::MatrixX
     total_entanglement = 0;
     is_precomputed = false;
     Q_tensors.clear();
-    Q_tensors.reserve(all_edges.rows());
 
     get_all_nodes();
     get_all_edges();
     get_node_labels();
     get_edge_labels();
+    build_edge_octree(64);
     // compute_total_linking_matrix();
 }
 
@@ -74,29 +109,53 @@ void filamentFields::update_contact_array(const Eigen::MatrixXd& _contact_array)
 }
 
 void filamentFields::get_all_nodes() {
+    // Pre-allocate and fill to avoid O(N^2) conservativeResize cost
+    long total_rows = 0;
     for (const Eigen::MatrixXd& nodes : filament_nodes_list) {
-        all_nodes.conservativeResize(all_nodes.rows() + nodes.rows(), 3);
-        all_nodes.bottomRows(nodes.rows()) = nodes;
+        total_rows += nodes.rows();
+    }
+    all_nodes.resize(static_cast<int>(total_rows), 3);
+    long offset = 0;
+    for (const Eigen::MatrixXd& nodes : filament_nodes_list) {
+        const int r = static_cast<int>(nodes.rows());
+        if (r > 0) {
+            all_nodes.block(static_cast<int>(offset), 0, r, 3) = nodes;
+            offset += r;
+        }
     }
 }
 
 void filamentFields::get_all_edges() {
     filament_edges_list.clear();
-    all_edges.resize(0, 6); // Ensure all_edges is an Nx6 matrix
-
+    // First pass: build per-filament edge matrices without growing all_edges
+    long total_edges = 0;
+    filament_edges_list.reserve(filament_nodes_list.size());
     for (const Eigen::MatrixXd& nodes : filament_nodes_list) {
-        Eigen::MatrixXd edges(nodes.rows() - 1, 6);
-
-        for (int idx = 0; idx < nodes.rows() - 1; ++idx) {
-            edges.row(idx).segment<3>(0) = nodes.row(idx);      // Start point of the edge
-            edges.row(idx).segment<3>(3) = nodes.row(idx + 1);  // End point of the edge
+        const int n = static_cast<int>(nodes.rows());
+        const int e = std::max(0, n - 1);
+        if (e > 0) {
+            Eigen::MatrixXd edges(e, 6);
+            for (int idx = 0; idx < e; ++idx) {
+                edges.row(idx).segment<3>(0) = nodes.row(idx);      // Start point of the edge
+                edges.row(idx).segment<3>(3) = nodes.row(idx + 1);  // End point of the edge
+            }
+            total_edges += e;
+            filament_edges_list.push_back(std::move(edges));
+        } else {
+            // Keep alignment between lists if needed
+            filament_edges_list.emplace_back(Eigen::MatrixXd(0,6));
         }
-        filament_edges_list.push_back(edges);
     }
 
+    // Second pass: concatenate into all_edges with a single allocation
+    all_edges.resize(static_cast<int>(total_edges), 6);
+    long offset = 0;
     for (const Eigen::MatrixXd& edges : filament_edges_list) {
-        all_edges.conservativeResize(all_edges.rows() + edges.rows(), 6);
-        all_edges.bottomRows(edges.rows()) = edges;
+        const int r = static_cast<int>(edges.rows());
+        if (r > 0) {
+            all_edges.block(static_cast<int>(offset), 0, r, 6) = edges;
+            offset += r;
+        }
     }
 }
 
@@ -506,14 +565,38 @@ void filamentFields::compute_all_edge_lengths() {
 
 Eigen::VectorXi filamentFields::sample_edges_locally(const Eigen::Vector3d& query_point, double R_omega) const {
     Eigen::VectorXi local_edge_trues = Eigen::VectorXi::Zero(all_edges.rows());
-    for (int idx = 0; idx < all_edges.rows(); ++idx) {
-        Eigen::Vector3d edge_start = all_edges.row(idx).segment<3>(0);
-        Eigen::Vector3d edge_end = all_edges.row(idx).segment<3>(3);
+    auto inside_by_segment_distance = [&](int idx)->bool{
+        const Eigen::Vector3d a = all_edges.row(idx).segment<3>(0);
+        const Eigen::Vector3d b = all_edges.row(idx).segment<3>(3);
+        // Accept if min distance from segment to query point is <= R_omega
+        double dseg = distance_point_segment(query_point, a, b);
+        if (dseg <= R_omega) return true;
+        // Also accept if midpoint is inside (useful heuristic and cheap)
+        Eigen::Vector3d m = 0.5 * (a + b);
+        if ((m - query_point).squaredNorm() <= R_omega * R_omega) return true;
+        // Or if either endpoint is inside
+        if ((a - query_point).squaredNorm() <= R_omega * R_omega) return true;
+        if ((b - query_point).squaredNorm() <= R_omega * R_omega) return true;
+        return false;
+    };
 
-        if (((edge_start - query_point).norm() < R_omega) && ((edge_end - query_point).norm() < R_omega)) {
+    // If we have a BH octree, use it to prune far edges quickly
+    if (!bh_nodes.empty()) {
+        std::vector<int> candidates;
+        candidates.reserve(256);
+        collect_edges_in_sphere(query_point, R_omega, /*nodeIdx*/0, candidates);
+        for (int idx : candidates) {
+            if (inside_by_segment_distance(idx)) {
+                local_edge_trues(idx) = 1;
+            }
+        }
+        return local_edge_trues;
+    }
+    // Fallback: naive scan
+    for (int idx = 0; idx < all_edges.rows(); ++idx) {
+        if (inside_by_segment_distance(idx)) {
             local_edge_trues(idx) = 1;
         }
-
     }
     return local_edge_trues;
 }
@@ -907,6 +990,25 @@ void filamentFields::compute_edge_wise_entanglement(const Eigen::MatrixXd& _all_
     //     double lk = filamentFields::compute_linking_number_for_edges(edge1, edge2);
     //     entanglement_matrix(idx, jdx) = lk;
     // }
+}
+
+void filamentFields::collect_edges_in_sphere(const Eigen::Vector3d& q, double R, int nodeIdx, std::vector<int>& out) const {
+    if (nodeIdx < 0 || nodeIdx >= static_cast<int>(bh_nodes.size())) return;
+    const BHNode& node = bh_nodes[nodeIdx];
+    // Quick prune by point-to-box distance
+    double d = distance_point_aabb(q, node.box);
+    if (d > R) return;
+    if (node.isLeaf) {
+        for (int idx : node.indices) {
+            out.push_back(idx);
+        }
+        return;
+    }
+    for (int c = 0; c < 8; ++c) {
+        int ci = node.children[c];
+        if (ci < 0) continue;
+        collect_edges_in_sphere(q, R, ci, out);
+    }
 }
 
 
